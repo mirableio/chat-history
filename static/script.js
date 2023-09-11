@@ -79,10 +79,6 @@ function loadMessages(convId) {
         });
 }
 
-function showTooltip(convDiv, conv) {
-    // Logic to show tooltip with created date and duration
-}
-
 function handleSearchInput(event) {
     if (event.key !== "Enter")
         return;
@@ -118,7 +114,21 @@ function loadConversations() {
         });
 }
 
+function loadActivityGraph() {
+    fetch('/api/activity')
+      .then(response => response.json())
+      .then(data => {
+        buildActivityGraph(document.getElementById('activity-graph'), {
+            data: data,
+        });
+    });          
+}
+
+window.addEventListener('DOMContentLoaded', (event) => {
+    loadConversations();
+    loadActivityGraph();
+});
+
 const searchInput = document.getElementById('search-input');
 searchInput.addEventListener('keydown', handleSearchInput);
 
-loadConversations();

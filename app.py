@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
 from markdown import markdown
+from collections import defaultdict
 
 from history import load_conversations
 from utils import time_group
@@ -33,7 +35,6 @@ def get_messages(conv_id: str):
     if not conversation:
         return JSONResponse(content={"error": "Invalid conversation ID"}, status_code=404)
 
-    #conversation = conversations[conv_id]
     messages = [{"text": markdown(msg.text),
                  "role": msg.role, 
                  "created": msg.created_str
@@ -43,6 +44,20 @@ def get_messages(conv_id: str):
         "messages": messages
     }
     return JSONResponse(content=response)
+
+
+@api_app.get("/activity")
+def get_activity():
+    activity_by_day = defaultdict(int)
+
+    for conversation in conversations:
+        for message in conversation.messages:
+            day = message.created.date()
+            activity_by_day[day] += 1
+    
+    activity_by_day = {str(k): v for k, v in sorted(dict(activity_by_day).items())}
+
+    return JSONResponse(content=activity_by_day)
 
 
 # Search conversations and messages

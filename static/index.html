@@ -12,7 +12,7 @@
             <h1 class="text-2xl ml-4 flex-grow">Conversations</h1>
         </div>
         <div class="w-2/3 mx-auto" style="text-align: center">
-            <input type="text" id="search-input" placeholder="Search..." class="p-2 bg-gray-700 text-white rounded w-full" style="max-width: 600px;">
+            <input type="text" id="search-input" placeholder="Search..." class="p-2 bg-gray-700 text-white rounded w-full" style="max-width: 730px;">
         </div>
     </div>
 
@@ -25,14 +25,18 @@
         <!-- Main content wrapper -->
         <div id="main-content-wrapper" class="w-2/3 overflow-y-auto">
             <!-- Central content -->
-            <div id="main-content" class="p-4 mx-auto overflow-hidden" style="max-width: 600px;">
+            <div id="main-content" class="p-4 mx-auto overflow-hidden" style="max-width: 730px;">
                 <!-- Messages -->
+
+                <h1 class="pt-10 pb-4 text-center text-xl">Your chat activity</h1>
+                <div id="activity-graph"></div>
+                        
             </div>
         </div>
     </div>
 
-
-
+    <link rel="stylesheet" href="style.css">
     <script src="script.js"></script>
+    <script src="activity.js"></script>
 </body>
 </html>
