@@ -1,0 +1,4 @@
+*.pyc
+.python-version
+conversations.json
+poetry.lock
