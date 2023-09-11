@@ -2,14 +2,30 @@ let selectedConvElem = null;  // Global variable to track selected conversation
 
 function appendConversationsToSidebar(data) {
     const sidebar = document.getElementById('sidebar');
+    let currentGroup = null;
+
     data.forEach(conv => {
+        // Check if the conversation belongs to a new group
+        if (conv.group !== currentGroup) {
+            // Update the current group
+            currentGroup = conv.group;
+
+            // Add a group title to the sidebar
+            const groupTitleDiv = document.createElement('div');
+            groupTitleDiv.className = 'p-2 text-gray-700 font-bold';
+            groupTitleDiv.innerText = currentGroup || 'No Group';
+            sidebar.appendChild(groupTitleDiv);
+        }
+
+        // Create a div for the conversation
         const convDiv = document.createElement('div');
         convDiv.className = 'p-2 hover:bg-gray-300 cursor-pointer';
         const convTitle = conv.title || 'Untitled';
-        convDiv.innerHTML = `<span>${convTitle}</span>
-            <small class="text-gray-500">${conv.created}</small>
-        `;
-        // convDiv.addEventListener('click', () => loadMessages(conv.id));
+        convDiv.innerHTML = `<div class="flex justify-between">
+            <span class="mr-2">${convTitle}</span>
+            <small class="text-gray-500 whitespace-nowrap">${conv.created}</small>
+        </div>`;
+        // Add click event listener
         convDiv.addEventListener('click', function() {
             loadMessages(conv.id);
 
@@ -24,6 +40,8 @@ function appendConversationsToSidebar(data) {
             // Update the selected conversation element
             selectedConvElem = this;
         });
+
+        // Append the conversation div to the sidebar
         sidebar.appendChild(convDiv);
     });
 }
@@ -35,10 +53,10 @@ function loadMessages(convId) {
             const mainContent = document.getElementById('main-content');
             mainContent.innerHTML = '';  // Clear previous messages
             const headerDiv = document.createElement('div');
-            headerDiv.className = 'p-2 border-b';
+            headerDiv.className = 'p-2 border-b text-right';
             headerDiv.innerHTML = `
                 <a href="https://chat.openai.com/c/${data.conversation_id}" 
-                target="_blank">Open in ChatGPT</a>
+                target="_blank" class="hover:underline">Open in ChatGPT ↗️</a>
             `;
             mainContent.appendChild(headerDiv);
 

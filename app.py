@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from markdown import markdown
 
 from history import load_conversations
+from utils import time_group
 
 
 # Initialize FastAPI app
@@ -17,11 +18,13 @@ conversations = load_conversations('data/conversations.json')
 @api_app.get("/conversations")
 def get_conversations():
     conversations_data = [{
+        "group": time_group(conv.created),
         "id": conv.id, 
         "title": conv.title or "[Untitled]",
         "created": conv.created_str,
         } for conv in conversations]
     return JSONResponse(content=conversations_data)
+
 
 # All messages from a specific conversation by its ID
 @api_app.get("/conversations/{conv_id}/messages")
@@ -40,6 +43,7 @@ def get_messages(conv_id: str):
         "messages": messages
     }
     return JSONResponse(content=response)
+
 
 # Search conversations and messages
 @api_app.get("/search")
