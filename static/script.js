@@ -61,7 +61,9 @@ async function loadMessages(convId) {
         mainContent.insertAdjacentHTML('beforeend', `
             <div class="p-2 border-b text-right">
                 <a href="https://chat.openai.com/c/${data.conversation_id}"
-                target="_blank" rel="noopener noreferrer" class="hover:underline">Open in ChatGPT ↗️</a>
+                target="_blank" rel="noopener noreferrer" class="hover:underline">Open in ChatGPT 
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
+                </a>
             </div>
         `);
 
@@ -129,12 +131,22 @@ async function loadChatStatistics() {
 }
 
 async function searchConversations(query) { 
-    try {
+    try { 
+        const mainContent = document.getElementById("main-content");
+        
+        mainContent.innerHTML = `
+            <div class="p-2 pt-8">
+                Searching...
+                <span class="material-symbols-outlined" 
+                    style="font-variation-settings: 'opsz' 48; 
+                    vertical-align: sub; font-size: 18px !important">hourglass_top</span>
+            </div>
+        `;
+
         const response = await fetch(`/api/search?query=${query}`);
         const data = await response.json();
 
-        const mainContent = document.getElementById("main-content");
-        mainContent.innerHTML = ""; // Clear previous messages        
+        mainContent.innerHTML = ""; // Clear previous messages
 
         if (data.length === 0) {
             // if msg is empty, display a message
@@ -150,7 +162,9 @@ async function searchConversations(query) {
                 mainContent.insertAdjacentHTML('beforeend', `
                     <div class="p-2 border-b pb-12 ${bgColorClass}">
                         <div><a href="https://chat.openai.com/c/${msg.id}"
-                        target="_blank" rel="noopener noreferrer" class="hover:underline">${msg.title}</a></div>
+                        target="_blank" rel="noopener noreferrer" class="hover:underline">${msg.title}
+                        <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 18px !important">open_in_new</span>
+                        </a></div>
                         <strong>${msg.role}:</strong>
                         <span>${msg.text}</span>
                         <small class="text-gray-500">${msg.created}</small>
