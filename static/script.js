@@ -1,3 +1,16 @@
+async function loadConversations() {
+    try {
+        const response = await fetch("/api/conversations");
+        const data = await response.json();
+
+        const sidebar = document.getElementById("sidebar");
+        sidebar.innerHTML = ""; // Clear previous conversations
+        appendConversationsToSidebar(data);
+    } catch (error) {
+        console.error("Failed to load conversations:", error);
+    }
+}
+
 let selectedConvElem = null;  // Global variable to track selected conversation
 
 function appendConversationsToSidebar(data) {
@@ -76,6 +89,50 @@ async function loadMessages(convId) {
     }
 }
 
+async function loadActivityGraph() {
+    try {
+        const response = await fetch("/api/activity");
+        const data = await response.json();
+        buildActivityGraph(document.getElementById("activity-graph"), { data: data });
+    } catch (error) {
+        console.error("Failed to load activity graph:", error);
+    }
+}
+
+async function loadChatStatistics() {
+    try {
+        const response = await fetch('/api/statistics');
+        const data = await response.json();
+        const tableContainer = document.getElementById('chat-statistics');
+
+        // Create table header and rows
+        let tableHTML = `
+            <table class="min-w-full bg-white">
+                <tbody>
+        `;
+
+        // Insert table rows based on fetched data
+        for (const [key, value] of Object.entries(data)) {
+            tableHTML += `
+                <tr>
+                    <td class="py-2 px-4 border-b">${key}</td>
+                    <td class="py-2 px-4 border-b">${value}</td>
+                </tr>
+            `;
+        }
+
+        // Close table tags
+        tableHTML += `
+                </tbody>
+            </table>
+        `;
+    
+        tableContainer.insertAdjacentHTML('beforeend', tableHTML);
+    } catch (error) {
+        console.error('Error fetching chat statistics:', error);
+    }
+}
+
 async function handleSearchInput(event) {
     if (event.key !== "Enter")
         return;
@@ -107,30 +164,8 @@ async function handleSearchInput(event) {
 const searchInput = document.getElementById("search-input");
 searchInput.addEventListener("keydown", handleSearchInput);
 
-async function loadConversations() {
-    try {
-        const response = await fetch("/api/conversations");
-        const data = await response.json();
-
-        const sidebar = document.getElementById("sidebar");
-        sidebar.innerHTML = ""; // Clear previous conversations
-        appendConversationsToSidebar(data);
-    } catch (error) {
-        console.error("Failed to load conversations:", error);
-    }
-}
-
-async function loadActivityGraph() {
-    try {
-        const response = await fetch("/api/activity");
-        const data = await response.json();
-        buildActivityGraph(document.getElementById("activity-graph"), { data: data });
-    } catch (error) {
-        console.error("Failed to load activity graph:", error);
-    }
-}
-
 window.addEventListener('DOMContentLoaded', (event) => {
     loadConversations();
     loadActivityGraph();
+    loadChatStatistics();
 });

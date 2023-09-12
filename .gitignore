@@ -2,3 +2,4 @@
 .python-version
 conversations.json
 poetry.lock
+.vscode

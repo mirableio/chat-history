@@ -4,9 +4,11 @@ from fastapi.staticfiles import StaticFiles
 
 from markdown import markdown
 from collections import defaultdict
+from datetime import timedelta
+import statistics
 
 from history import load_conversations
-from utils import time_group
+from utils import time_group, human_readable_time
 
 
 # Initialize FastAPI app
@@ -58,6 +60,42 @@ def get_activity():
     activity_by_day = {str(k): v for k, v in sorted(dict(activity_by_day).items())}
 
     return JSONResponse(content=activity_by_day)
+
+
+@api_app.get("/statistics")
+def get_statistics():
+    # Calculate the min, max, and average lengths
+    lengths = []
+    for conv in conversations:
+        start_time = conv.created
+        end_time = max(msg.created for msg in conv.messages) if conv.messages else start_time
+        length = end_time - start_time
+        lengths.append((length.total_seconds(), conv.id))
+
+    # Sort conversations by length
+    lengths.sort(reverse=True)
+
+    if lengths:
+        min_threshold_seconds = 1
+        filtered_min_lengths = [l for l in lengths if l[0] >= min_threshold_seconds]
+        min_length = human_readable_time(min(filtered_min_lengths)[0])
+        max_length = human_readable_time(max(lengths)[0])
+        avg_length = human_readable_time(statistics.mean([l[0] for l in lengths]))
+    else:
+        min_length = max_length = avg_length = "N/A"
+
+    # Generate links for the top 3 longest conversations
+    top_3_links = "".join([f"<a href='https://chat.openai.com/c/{l[1]}' target='_blank'>Chat {chr(65 + i)}</a><br/>" 
+                   for i, l in enumerate(lengths[:3])])
+
+    return JSONResponse(content={
+        "Last chat message": max(conv.created for conv in conversations).strftime('%Y-%m-%d'),
+        "First chat message": min(conv.created for conv in conversations).strftime('%Y-%m-%d'),
+        "Shortest conversation": min_length,
+        "Longest conversation": max_length,
+        "Average chat length": avg_length,
+        "Top longest chats": top_3_links
+    })
 
 
 # Search conversations and messages
