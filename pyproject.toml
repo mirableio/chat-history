@@ -10,6 +10,10 @@ python = "^3.10"
 fastapi = "^0.103.1"
 uvicorn = "^0.23.2"
 markdown = "^3.4.4"
+toml = "^0.10.2"
+openai = {extras = ["datalib"], version = "^0.28.0"}
+faiss-cpu = "^1.7.4"
+tqdm = "^4.66.1"
 
 
 [build-system]

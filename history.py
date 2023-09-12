@@ -100,5 +100,5 @@ def load_conversations(path: str) -> List[Conversation]:
         print(str(e))
         sys.exit(1)
 
-    print(f"Successfully loaded {len(conversations)} conversations")
+    print(f"-- Loaded {len(conversations)} conversations")
     return conversations

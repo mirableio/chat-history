@@ -2,13 +2,15 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import openai
+import toml
 from markdown import markdown
 from collections import defaultdict
-from datetime import timedelta
 import statistics
 
 from history import load_conversations
 from utils import time_group, human_readable_time
+from llms import load_create_embeddings, search_similar, TYPE_CONVERSATION, TYPE_MESSAGE
 
 
 # Initialize FastAPI app
@@ -16,6 +18,19 @@ app = FastAPI()
 api_app = FastAPI(title="API")
 
 conversations = load_conversations('data/conversations.json')
+
+try:
+    SECRETS = toml.load("data/secrets.toml")
+    OPENAI_ENABLED = True
+except:
+    print("-- No secrets found. Not able to access the OpenAI API.")
+    OPENAI_ENABLED = False
+
+if OPENAI_ENABLED:
+    openai.organization = SECRETS["openai"]["organization"]
+    openai.api_key = SECRETS["openai"]["api_key"]
+
+    embeddings, embeddings_ids, embeddings_index = load_create_embeddings("data/embeddings.json", conversations)
 
 
 # All conversation items
@@ -103,28 +118,58 @@ def get_statistics():
 def search_conversations(query: str = Query(..., min_length=3, description="Search query")):
     search_results = []
 
-    for conv in conversations:
-        if query.lower() in (conv.title or "").lower():
-            search_results.append({
-                "type": "conversation", 
-                "id": conv.id, 
-                "title": conv.title_str,
-                "created": conv.created_str,
-            })
-
-        for msg in conv.messages:
-            if msg and query.lower() in msg.text.lower():
+    if OPENAI_ENABLED:
+        for _id in search_similar(query, embeddings_ids, embeddings_index):
+            conv = next((conv for conv in conversations if conv.id == embeddings[_id]["conv_id"]), None)
+            if conv:
+                if embeddings[_id]["type"] == TYPE_CONVERSATION:
+                    if conv:
+                        msg = conv.messages[0]
+                        search_results.append({
+                            "type": "conversation", 
+                            "id": conv.id, 
+                            "title": conv.title_str,
+                            "text": markdown(msg.text),
+                            "role": msg.role,
+                            "created": conv.created_str,
+                        })
+                elif embeddings[_id]["type"] == TYPE_MESSAGE:
+                        msg = next((msg for msg in conv.messages if msg.id == _id), None)
+                        if msg:
+                            search_results.append({
+                                "type": "message", 
+                                "id": conv.id, 
+                                "title": conv.title_str,
+                                "text": markdown(msg.text), 
+                                "role": msg.role, 
+                                "created": msg.created_str
+                            })
+    else:
+        for conv in conversations:
+            if query.lower() in (conv.title or "").lower():
+                msg = conv.messages[0]
                 search_results.append({
-                    "type": "message", 
-                    "id": conv.id,
+                    "type": "conversation", 
+                    "id": conv.id, 
                     "title": conv.title_str,
-                    "text": markdown(msg.text), 
-                    "role": msg.role, 
-                    "created": msg.created_str
+                    "text": markdown(msg.text),
+                    "role": msg.role,
+                    "created": conv.created_str,
                 })
 
-        if len(search_results) >= 10:
-            break
+            for msg in conv.messages:
+                if msg and query.lower() in msg.text.lower():
+                    search_results.append({
+                        "type": "message", 
+                        "id": conv.id,
+                        "title": conv.title_str,
+                        "text": markdown(msg.text), 
+                        "role": msg.role, 
+                        "created": msg.created_str
+                    })
+
+            if len(search_results) >= 10:
+                break
 
     return JSONResponse(content=search_results)
 

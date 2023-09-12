@@ -3,3 +3,5 @@
 conversations.json
 poetry.lock
 .vscode
+secrets.toml
+embeddings.json
