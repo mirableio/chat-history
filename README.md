@@ -1,6 +1,6 @@
 # ChatGPT history
 
-UI for browsing and searching OpenAI's ChatGPT
+UI for browsing and searching OpenAI's ChatGPT conversations.
 
 **Important**: This project is 100% unaffiliated with OpenAI.
 

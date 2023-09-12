@@ -83,6 +83,10 @@ class Conversation(BaseModel):
     def updated_str(self) -> str:
         return self.updated.strftime('%Y-%m-%d %H:%M:%S')
 
+    @property
+    def title_str(self) -> str:
+        return self.title or '[Untitled]'
+
 
 def load_conversations(path: str) -> List[Conversation]:
     with open(path, 'r') as f:

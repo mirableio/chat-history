@@ -30,10 +30,9 @@ function appendConversationsToSidebar(data) {
             `);
         }
 
-        const convTitle = conv.title || "Untitled";
         sidebar.insertAdjacentHTML("beforeend", `
             <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between" id="conv-${conv.id}">
-                <span class="mr-2">${convTitle}</span>
+                <span class="mr-2">${conv.title}</span>
                 <small class="text-gray-500 whitespace-nowrap">${conv.created}</small>
             </div>
         `);
@@ -43,9 +42,7 @@ function appendConversationsToSidebar(data) {
         convDiv.addEventListener("click", function () {
             loadMessages(conv.id);
 
-            if (selectedConvElem) {
-                selectedConvElem.classList.remove("bg-gray-400");
-            }
+            unSelectConversation();
             this.classList.add("bg-gray-400");
             selectedConvElem = this;
         });
@@ -81,9 +78,7 @@ async function loadMessages(convId) {
             `);
         });
 
-        // Scroll to the top of the main content area
-        const mainContentWrapper = document.getElementById("main-content-wrapper");
-        mainContentWrapper.scrollTop = 0;
+        scrollToTop();
     } catch (error) {
         console.error("Failed to load messages:", error);
     }
@@ -133,34 +128,67 @@ async function loadChatStatistics() {
     }
 }
 
-async function handleSearchInput(event) {
-    if (event.key !== "Enter")
-        return;
-
-    const query = encodeURIComponent(searchInput.value);
-
+async function searchConversations(query) { 
     try {
         const response = await fetch(`/api/search?query=${query}`);
         const data = await response.json();
 
         const mainContent = document.getElementById("main-content");
-        mainContent.innerHTML = ""; // Clear previous messages
+        mainContent.innerHTML = ""; // Clear previous messages        
 
-        data.forEach((msg) => {
+        if (data.length === 0) {
+            // if msg is empty, display a message
             mainContent.insertAdjacentHTML('beforeend', `
-                <div class="p-2 border-b">
-                    <strong>${msg.role}:</strong>
-                    <span>${msg.text}</span>
-                    <small class="text-gray-500">${msg.created}</small>
+                <div class="p-2 pt-8">
+                    No results found.
                 </div>
             `);
-        });
+        }
+        else{
+            data.forEach((msg, index) => {
+                const bgColorClass = index % 2 === 0 ? '' : 'bg-gray-200';
+                mainContent.insertAdjacentHTML('beforeend', `
+                    <div class="p-2 border-b pb-12 ${bgColorClass}">
+                        <div><a href="https://chat.openai.com/c/${msg.id}"
+                        target="_blank" rel="noopener noreferrer" class="hover:underline">${msg.title}</a></div>
+                        <strong>${msg.role}:</strong>
+                        <span>${msg.text}</span>
+                        <small class="text-gray-500">${msg.created}</small>
+                    </div>
+                `);
+            });
+        }
+
+        scrollToTop();
+        unSelectConversation();
     } catch (error) {
         console.error("Search failed:", error);
     }
 }
 
+// Scroll to the top of the main content area
+function scrollToTop() {
+    const mainContentWrapper = document.getElementById("main-content-wrapper");
+    mainContentWrapper.scrollTop = 0;
+}
+
+// Remove background color from previously selected conversation
+function unSelectConversation() {
+    if (selectedConvElem) {
+        selectedConvElem.classList.remove("bg-gray-400");
+    }
+}
+
 // Listen for Enter key press on searchInput element
+function handleSearchInput(event) {
+    if (event.key !== "Enter")
+        return;
+
+    const query = encodeURIComponent(searchInput.value);
+    if (query)
+        searchConversations(query);
+}
+
 const searchInput = document.getElementById("search-input");
 searchInput.addEventListener("keydown", handleSearchInput);
 

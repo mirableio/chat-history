@@ -24,7 +24,7 @@ def get_conversations():
     conversations_data = [{
         "group": time_group(conv.created),
         "id": conv.id, 
-        "title": conv.title or "[Untitled]",
+        "title": conv.title_str,
         "created": conv.created_str,
         } for conv in conversations]
     return JSONResponse(content=conversations_data)
@@ -103,13 +103,25 @@ def get_statistics():
 def search_conversations(query: str = Query(..., min_length=3, description="Search query")):
     search_results = []
 
-    for i, conv in enumerate(conversations):
+    for conv in conversations:
         if query.lower() in (conv.title or "").lower():
-            search_results.append({"type": "conversation", "id": i, "title": conv.title or "Untitled"})
+            search_results.append({
+                "type": "conversation", 
+                "id": conv.id, 
+                "title": conv.title_str,
+                "created": conv.created_str,
+            })
 
         for msg in conv.messages:
             if msg and query.lower() in msg.text.lower():
-                search_results.append({"type": "message", "conv_id": i, "text": markdown(msg.text), "role": msg.role, "created": msg.created_str})
+                search_results.append({
+                    "type": "message", 
+                    "id": conv.id,
+                    "title": conv.title_str,
+                    "text": markdown(msg.text), 
+                    "role": msg.role, 
+                    "created": msg.created_str
+                })
 
         if len(search_results) >= 10:
             break
