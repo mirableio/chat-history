@@ -4,9 +4,16 @@ UI for browsing and searching OpenAI's ChatGPT conversations.
 
 **Important**: This project is 100% unaffiliated with OpenAI.
 
-Requires Python 3.10+
+## Features
 
-## Usage
+- Shows activity graph and useful statistics
+- Quickly browse and open the conversations
+- Search conversations - both semantic and strict search
+- Open original conversations on the ChatGPT site
+
+## Setup
+
+Currently can only be installed locally. Requires Python 3.10+
 
 1. [Export ChatGPT history](https://help.openai.com/en/articles/7260999-how-do-i-export-my-chatgpt-history-and-data)
 2. Unzip the download, place `conversations.json` in the `data` folder

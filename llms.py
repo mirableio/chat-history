@@ -2,6 +2,7 @@ import openai
 import faiss
 import numpy as np
 import json
+import os
 from tqdm import tqdm
 
 
@@ -14,44 +15,70 @@ def get_embedding(text):
                                    model="text-embedding-ada-002"
                                    )["data"][0]["embedding"]
 
+
 def load_create_embeddings(path: str, conversations):
-    try:
-        with open(path, "r") as f:
-            embeddings = json.load(f)
-        print(f"-- Loaded {len(embeddings)} embeddings")
-    except:
-        print("-- No embeddings found. Generating new ones...")
+
+    def load_embeddings(path: str):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError:
+            print("Error decoding JSON from embeddings file.")
+            return {}
+
+    def save_embeddings(embeddings, path: str):
+        with open(path, "w") as f:
+            json.dump(embeddings, f)
+
+    def generate_missing_embeddings(conversations, embeddings, path: str):
+        count = 0
+        batch_size = 10  # Save every 10 conversations
         for conv in tqdm(conversations):
-            if conv.title:
-                embedding = get_embedding(conv.title)
+            updated = False  # Flag to check if we updated the embeddings dict
+            if conv.title and conv.id not in embeddings:
                 embeddings[conv.id] = {
                     "type": TYPE_CONVERSATION,
                     "conv_id": conv.id,
-                    "embedding": embedding
+                    "embedding": get_embedding(conv.title)
                 }
+                updated = True
+
             for msg in conv.messages:
-                if msg and msg.text:
-                    embedding = get_embedding(msg.text)
+                if msg and msg.text and msg.id not in embeddings:
                     embeddings[msg.id] = {
                         "type": TYPE_MESSAGE,
                         "conv_id": conv.id,
-                        "embedding": embedding
+                        "embedding": get_embedding(msg.text)
                     }
+                    updated = True
 
-        with open("data/embeddings.json", "w") as f:
-            json.dump(embeddings, f)
-        print(f"-- Created {len(embeddings)} embeddings")
+            if updated:
+                count += 1
 
-    embeddings_ids = list(embeddings.keys())
-    embeddings_np = [np.array(embeddings[_id]["embedding"]) for _id in embeddings_ids]
+            if count > 0 and count % batch_size == 0:
+                save_embeddings(embeddings, path)
 
-    # FAISS works with float32 data type
-    embeddings_np = np.array(embeddings_np).astype('float32')
+    def build_faiss_index(embeddings):
+        embeddings_ids = list(embeddings.keys())
+        embeddings_np = np.array([np.array(embeddings[_id]["embedding"]) for _id in embeddings_ids]).astype('float32')
+        d = embeddings_np.shape[1]
+        index = faiss.IndexFlatL2(d)
+        index.add(embeddings_np)
+        return index, embeddings_ids
 
-    # Build the index
-    d = embeddings_np.shape[1]  # dimension
-    embeddings_index = faiss.IndexFlatL2(d)
-    embeddings_index.add(embeddings_np)
+    embeddings = load_embeddings(path)
+    print(f"-- Loaded {len(embeddings)} embeddings")
+
+    missing_count = sum(1 for conv in conversations if conv.id not in embeddings)
+    if missing_count > 0:
+        print(f"-- {missing_count} conversations don't have embeddings. Generating new ones...")
+        generate_missing_embeddings(conversations, embeddings, path)
+        save_embeddings(embeddings, path)  # Final save
+
+    print(f"-- Created {len(embeddings)} embeddings")
+    embeddings_index, embeddings_ids = build_faiss_index(embeddings)
     print(f"-- Built FAISS index with {embeddings_index.ntotal} embeddings")
 
     return embeddings, embeddings_ids, embeddings_index
