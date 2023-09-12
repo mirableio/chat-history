@@ -116,57 +116,52 @@ def get_statistics():
 # Search conversations and messages
 @api_app.get("/search")
 def search_conversations(query: str = Query(..., min_length=3, description="Search query")):
+
+    def add_search_result(search_results, result_type, conv, msg):
+        search_results.append({
+            "type": result_type,
+            "id": conv.id,
+            "title": conv.title_str,
+            "text": markdown(msg.text),
+            "role": msg.role,
+            "created": conv.created_str if result_type == "conversation" else msg.created_str,
+        })
+
+    def find_conversation_by_id(conversations, id):
+        return next((conv for conv in conversations if conv.id == id), None)
+
+    def find_message_by_id(messages, id):
+        return next((msg for msg in messages if msg.id == id), None)
+
     search_results = []
 
-    if OPENAI_ENABLED:
+    if query.startswith('"') and query.endswith('"'):
+        query = query[1:-1]
+        query_exact = True
+    else:
+        query_exact = False
+
+    if OPENAI_ENABLED and not query_exact:
         for _id in search_similar(query, embeddings_ids, embeddings_index):
-            conv = next((conv for conv in conversations if conv.id == embeddings[_id]["conv_id"]), None)
+            conv = find_conversation_by_id(conversations, embeddings[_id]["conv_id"])            
             if conv:
-                if embeddings[_id]["type"] == TYPE_CONVERSATION:
-                    if conv:
-                        msg = conv.messages[0]
-                        search_results.append({
-                            "type": "conversation", 
-                            "id": conv.id, 
-                            "title": conv.title_str,
-                            "text": markdown(msg.text),
-                            "role": msg.role,
-                            "created": conv.created_str,
-                        })
-                elif embeddings[_id]["type"] == TYPE_MESSAGE:
-                        msg = next((msg for msg in conv.messages if msg.id == _id), None)
-                        if msg:
-                            search_results.append({
-                                "type": "message", 
-                                "id": conv.id, 
-                                "title": conv.title_str,
-                                "text": markdown(msg.text), 
-                                "role": msg.role, 
-                                "created": msg.created_str
-                            })
+                result_type = embeddings[_id]["type"]
+                if result_type == TYPE_CONVERSATION:
+                    msg = conv.messages[0]
+                else:
+                    msg = find_message_by_id(conv.messages, _id)
+                
+                if msg:
+                    add_search_result(search_results, result_type, conv, msg)
     else:
         for conv in conversations:
-            if query.lower() in (conv.title or "").lower():
-                msg = conv.messages[0]
-                search_results.append({
-                    "type": "conversation", 
-                    "id": conv.id, 
-                    "title": conv.title_str,
-                    "text": markdown(msg.text),
-                    "role": msg.role,
-                    "created": conv.created_str,
-                })
+            query_lower = query.lower()
+            if (conv.title or "").lower().find(query_lower) != -1:
+                add_search_result(search_results, "conversation", conv, conv.messages[0])
 
             for msg in conv.messages:
-                if msg and query.lower() in msg.text.lower():
-                    search_results.append({
-                        "type": "message", 
-                        "id": conv.id,
-                        "title": conv.title_str,
-                        "text": markdown(msg.text), 
-                        "role": msg.role, 
-                        "created": msg.created_str
-                    })
+                if msg and msg.text.lower().find(query_lower) != -1:
+                    add_search_result(search_results, "message", conv, msg)
 
             if len(search_results) >= 10:
                 break
