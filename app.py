@@ -30,7 +30,7 @@ if OPENAI_ENABLED:
     openai.organization = SECRETS["openai"]["organization"]
     openai.api_key = SECRETS["openai"]["api_key"]
 
-    embeddings, embeddings_ids, embeddings_index = load_create_embeddings("data/embeddings.json", conversations)
+    embeddings, embeddings_ids, embeddings_index = load_create_embeddings("data/embeddings.db", conversations)
 
 
 # All conversation items

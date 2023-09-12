@@ -6,7 +6,7 @@ UI for browsing and searching OpenAI's ChatGPT conversations.
 
 ## Features
 
-- Shows activity graph and useful statistics
+- See activity graph and useful statistics
 - Quickly browse and open the conversations
 - Search conversations - both semantic and strict search
 - Open original conversations on the ChatGPT site
