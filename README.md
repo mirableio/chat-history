@@ -1,15 +1,16 @@
 # ChatGPT history
 
-UI for browsing and searching OpenAI's ChatGPT conversations.
+UI for navigating and organizing OpenAI's ChatGPT conversations.
 
 **Important**: This project is 100% unaffiliated with OpenAI.
 
 ## Features
 
 - See activity graph and useful statistics
-- Quickly browse and open the conversations
-- Search conversations - both semantic and strict search
-- Open original conversations on the ChatGPT site
+- Quickly browse and open the chats
+- Search chats (semantic and "strict")
+- List of favorite chats
+- Open conversations on the ChatGPT site
 
 ## Setup
 
