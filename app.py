@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import sqlite3
 import openai
 import toml
 from datetime import datetime
@@ -12,6 +13,9 @@ import statistics
 from history import load_conversations
 from utils import time_group, human_readable_time
 from llms import load_create_embeddings, search_similar, TYPE_CONVERSATION, TYPE_MESSAGE
+
+DB_EMBEDDINGS = "data/embeddings.db"
+DB_SETTINGS = "data/settings.db"
 
 
 # Initialize FastAPI app
@@ -31,17 +35,26 @@ if OPENAI_ENABLED:
     openai.organization = SECRETS["openai"]["organization"]
     openai.api_key = SECRETS["openai"]["api_key"]
 
-    embeddings, embeddings_ids, embeddings_index = load_create_embeddings("data/embeddings.db", conversations)
+    embeddings, embeddings_ids, embeddings_index = load_create_embeddings(DB_EMBEDDINGS, conversations)
 
 
 # All conversation items
 @api_app.get("/conversations")
 def get_conversations():
+    # Get favorites
+    conn = connect_settings_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT conversation_id FROM favorites WHERE is_favorite = 1")
+    rows = cursor.fetchall()
+    favorite_ids = [row[0] for row in rows]
+    conn.close()
+
     conversations_data = [{
         "group": time_group(conv.created),
         "id": conv.id, 
         "title": conv.title_str,
         "created": conv.created_str,
+        "is_favorite": conv.id in favorite_ids
         } for conv in conversations]
     return JSONResponse(content=conversations_data)
 
@@ -172,6 +185,45 @@ def search_conversations(query: str = Query(..., min_length=3, description="Sear
                 break
 
     return JSONResponse(content=search_results)
+
+
+
+# Toggle favorite status
+@api_app.post("/toggle_favorite")
+def toggle_favorite(conv_id: str):
+    conn = connect_settings_db()
+    cursor = conn.cursor()
+    
+    # Check if the conversation_id already exists in favorites
+    cursor.execute("SELECT is_favorite FROM favorites WHERE conversation_id = ?", (conv_id,))
+    row = cursor.fetchone()
+    
+    if row is None:
+        # Insert new entry with is_favorite set to True
+        cursor.execute("INSERT INTO favorites (conversation_id, is_favorite) VALUES (?, ?)", (conv_id, True))
+        is_favorite = True
+    else:
+        # Toggle the is_favorite status
+        is_favorite = not row[0]
+        cursor.execute("UPDATE favorites SET is_favorite = ? WHERE conversation_id = ?", (is_favorite, conv_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return {"conversation_id": conv_id, "is_favorite": is_favorite}
+
+
+def connect_settings_db():
+    conn = sqlite3.connect(DB_SETTINGS)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS favorites (
+            conversation_id TEXT PRIMARY KEY,
+            is_favorite BOOLEAN
+        );
+    """)
+    conn.commit()
+    return conn
 
 
 app.mount("/api", api_app)

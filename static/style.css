@@ -26,3 +26,10 @@
 #activity-graph {
     font-size: small;
 }
+
+.heart-div span {
+    color: rgb(229,231,235);
+}
+.heart-div.is-favorite span {
+    color: red;
+}

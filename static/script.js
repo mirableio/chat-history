@@ -20,9 +20,9 @@ function populateGroupDropdown(conversations) {
         }
     });
 
-    const groupFilterElem = document.getElementById('groupFilter');
+    const groupFilterElem = document.getElementById("groupFilter");
     Array.from(groupSet).forEach(group => {
-        const optionElem = document.createElement('option');
+        const optionElem = document.createElement("option");
         optionElem.value = group;
         optionElem.textContent = group;
         groupFilterElem.appendChild(optionElem);
@@ -35,12 +35,13 @@ function populateConversationsList() {
     const sidebar = document.getElementById("sidebar-conversations");
     sidebar.innerHTML = ""; // Clear previous conversations
 
-    const selectedGroup = document.getElementById('groupFilter').value;
-    const searchText = document.getElementById('textFilter').value.toLowerCase();
+    const selectedGroup = document.getElementById("groupFilter").value;
+    const searchText = document.getElementById("textFilter").value.toLowerCase();
     
     // Apply filters
     const filteredData = conversationData.filter(conv => {
-        return (!selectedGroup || (conv.group && conv.group === selectedGroup)) &&
+        return (!selectedGroup || (conv.group && conv.group === selectedGroup) ||
+                (selectedGroup == "*" && conv.is_favorite)) &&
                 (!searchText || (conv.title && conv.title.toLowerCase().includes(searchText)));
     });
 
@@ -58,14 +59,18 @@ function populateConversationsList() {
                 </div>
             `);
         }
-
+    
         sidebar.insertAdjacentHTML("beforeend", `
-            <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between" id="conv-${conv.id}">
-                <span class="mr-2">${conv.title}</span>
-                <small class="text-gray-500 whitespace-nowrap">${conv.created}</small>
+            <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between relative group" id="conv-${conv.id}">
+                <span class="mr-2">${conv.title}</span>                
+                <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(' ')[1]}">${conv.created.split(' ')[0]}</small>
+        
+                <div class="absolute right-20 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick('${conv.id}')">
+                    <span class="material-symbols-outlined heart-icon" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 24px !important;">favorite</span>
+                </div>
             </div>
         `);
-
+    
         document.getElementById(`conv-${conv.id}`).addEventListener("click", function () {
             loadChatMessages(conv.id);
 
@@ -74,6 +79,31 @@ function populateConversationsList() {
             selectedConvElem = this;
         });
     });
+}
+
+async function handleHeartClick(convId) {
+    try {
+        const response = await fetch(`/api/toggle_favorite?conv_id=${convId}`, {
+            method: "POST",
+        });
+        const data = await response.json();
+
+        // Update the conversationData array
+        const conversation = conversationData.find(conv => conv.id === convId);
+        if (conversation) {
+            conversation.is_favorite = data.is_favorite;
+        }
+        
+        // Update the UI based on the new favorite status
+        const heartContainer = document.querySelector(`#conv-${convId} .heart-div`);
+        if (data.is_favorite) {
+            heartContainer.classList.add("is-favorite");
+        } else {
+            heartContainer.classList.remove("is-favorite");
+        }
+    } catch (error) {
+        console.error("Failed to toggle favorite status:", error);
+    }
 }
 
 async function loadChatMessages(convId) {
@@ -85,7 +115,7 @@ async function loadChatMessages(convId) {
         mainContent.innerHTML = ""; // Clear previous messages
 
         // Create a header with a link to the conversation
-        mainContent.insertAdjacentHTML('beforeend', `
+        mainContent.insertAdjacentHTML("beforeend", `
             <div class="p-2 border-b text-right">
                 <a href="https://chat.openai.com/c/${data.conversation_id}"
                 target="_blank" rel="noopener noreferrer" class="hover:underline">Open in ChatGPT 
@@ -96,9 +126,10 @@ async function loadChatMessages(convId) {
 
         // Populate the main content with messages
         const messages = data.messages;
-        messages.forEach((msg) => {
+        messages.forEach((msg, index) => {
+            const bgColorClass = index % 2 === 0 ? '' : 'bg-gray-200';
             mainContent.insertAdjacentHTML('beforeend', `
-                <div class="p-2 border-b">
+                <div class="p-2 border-b ${bgColorClass}">
                     <small class="text-gray-500">${msg.created}</small>
                     <br/>
                     <strong>${msg.role}:</strong>
@@ -151,9 +182,9 @@ async function loadChatStatistics() {
             </table>
         `;
     
-        tableContainer.insertAdjacentHTML('beforeend', tableHTML);
+        tableContainer.insertAdjacentHTML("beforeend", tableHTML);
     } catch (error) {
-        console.error('Error fetching chat statistics:', error);
+        console.error("Error fetching chat statistics:", error);
     }
 }
 

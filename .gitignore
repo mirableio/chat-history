@@ -5,3 +5,4 @@ poetry.lock
 .vscode
 secrets.toml
 embeddings.db
+settings.db
