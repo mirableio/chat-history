@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 import openai
 import toml
+from datetime import datetime
 from markdown import markdown
 from collections import defaultdict
 import statistics
@@ -103,8 +104,12 @@ def get_statistics():
     top_3_links = "".join([f"<a href='https://chat.openai.com/c/{l[1]}' target='_blank'>Chat {chr(65 + i)}</a><br/>" 
                    for i, l in enumerate(lengths[:3])])
 
+    # Get the last chat message timestamp and backup age
+    last_chat_timestamp = max(conv.created for conv in conversations)
+
     return JSONResponse(content={
-        "Last chat message": max(conv.created for conv in conversations).strftime('%Y-%m-%d'),
+        "Chat backup age": human_readable_time((datetime.now() - last_chat_timestamp).total_seconds()),
+        "Last chat message": last_chat_timestamp.strftime('%Y-%m-%d'),
         "First chat message": min(conv.created for conv in conversations).strftime('%Y-%m-%d'),
         "Shortest conversation": min_length,
         "Longest conversation": max_length,

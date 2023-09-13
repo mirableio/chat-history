@@ -1,23 +1,52 @@
+let conversationData = null;
+
 async function loadConversations() {
     try {
         const response = await fetch("/api/conversations");
-        const data = await response.json();
-
-        const sidebar = document.getElementById("sidebar");
-        sidebar.innerHTML = ""; // Clear previous conversations
-        appendConversationsToSidebar(data);
+        conversationData = await response.json();
+        
+        populateGroupDropdown(conversationData);
+        populateConversationsList();
     } catch (error) {
         console.error("Failed to load conversations:", error);
     }
 }
 
+function populateGroupDropdown(conversations) {
+    const groupSet = new Set();
+    conversations.forEach(conv => {
+        if (conv.group) {
+            groupSet.add(conv.group);
+        }
+    });
+
+    const groupFilterElem = document.getElementById('groupFilter');
+    Array.from(groupSet).forEach(group => {
+        const optionElem = document.createElement('option');
+        optionElem.value = group;
+        optionElem.textContent = group;
+        groupFilterElem.appendChild(optionElem);
+    });
+}
+
 let selectedConvElem = null;  // Global variable to track selected conversation
 
-function appendConversationsToSidebar(data) {
-    const sidebar = document.getElementById("sidebar");
+function populateConversationsList() {
+    const sidebar = document.getElementById("sidebar-conversations");
+    sidebar.innerHTML = ""; // Clear previous conversations
+
+    const selectedGroup = document.getElementById('groupFilter').value;
+    const searchText = document.getElementById('textFilter').value.toLowerCase();
+    
+    // Apply filters
+    const filteredData = conversationData.filter(conv => {
+        return (!selectedGroup || (conv.group && conv.group === selectedGroup)) &&
+                (!searchText || (conv.title && conv.title.toLowerCase().includes(searchText)));
+    });
+
     let currentGroup = null;
 
-    data.forEach((conv) => {
+    filteredData.forEach((conv) => {
         // Check if the conversation belongs to a new group
         if (conv.group !== currentGroup) {
             currentGroup = conv.group;
@@ -37,10 +66,8 @@ function appendConversationsToSidebar(data) {
             </div>
         `);
 
-        // Add click event listener
-        const convDiv = document.getElementById(`conv-${conv.id}`);
-        convDiv.addEventListener("click", function () {
-            loadMessages(conv.id);
+        document.getElementById(`conv-${conv.id}`).addEventListener("click", function () {
+            loadChatMessages(conv.id);
 
             unSelectConversation();
             this.classList.add("bg-gray-400");
@@ -49,7 +76,7 @@ function appendConversationsToSidebar(data) {
     });
 }
 
-async function loadMessages(convId) {
+async function loadChatMessages(convId) {
     try {
         const response = await fetch(`/api/conversations/${encodeURIComponent(convId)}/messages`);
         const data = await response.json();
@@ -182,8 +209,7 @@ async function searchConversations(query) {
 
 // Scroll to the top of the main content area
 function scrollToTop() {
-    const mainContentWrapper = document.getElementById("main-content-wrapper");
-    mainContentWrapper.scrollTop = 0;
+    document.getElementById("main-content-wrapper").scrollTop = 0;
 }
 
 // Remove background color from previously selected conversation
@@ -198,16 +224,17 @@ function handleSearchInput(event) {
     if (event.key !== "Enter")
         return;
 
-    const query = encodeURIComponent(searchInput.value);
+    const query = encodeURIComponent(document.getElementById("search-input").value);
     if (query)
         searchConversations(query);
 }
-
-const searchInput = document.getElementById("search-input");
-searchInput.addEventListener("keydown", handleSearchInput);
 
 window.addEventListener('DOMContentLoaded', (event) => {
     loadConversations();
     loadActivityGraph();
     loadChatStatistics();
+
+    document.getElementById("search-input").addEventListener("keydown", handleSearchInput);
+    document.getElementById("groupFilter").addEventListener("change", populateConversationsList);
+    document.getElementById("textFilter").addEventListener("input", populateConversationsList);
 });
