@@ -144,11 +144,12 @@ async function loadChatMessages(convId) {
     }
 }
 
-async function loadActivityGraph() {
+async function loadActivityStats() {
     try {
         const response = await fetch("/api/activity");
         const data = await response.json();
         buildActivityGraph(document.getElementById("activity-graph"), { data: data });
+        buildActivityBarChart(data);
     } catch (error) {
         console.error("Failed to load activity graph:", error);
     }
@@ -262,7 +263,7 @@ function handleSearchInput(event) {
 
 window.addEventListener('DOMContentLoaded', (event) => {
     loadConversations();
-    loadActivityGraph();
+    loadActivityStats();
     loadChatStatistics();
 
     document.getElementById("search-input").addEventListener("keydown", handleSearchInput);

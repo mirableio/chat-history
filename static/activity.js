@@ -2,7 +2,7 @@
 function buildActivityGraph(parentElement, options) {
   var settings = Object.assign(
     {
-      colorStep: 20,
+      colorStep: 15,
       click: null,
       data: [],
     },
@@ -48,10 +48,11 @@ function buildActivityGraph(parentElement, options) {
   }
 
   function getColor(count) {
-    const colorRanges = ["#eeeeee", "#9be9a8", "#40c463", "#30a14e", "#216e39"];
-    const index = Math.min(Math.floor(count / settings.colorStep), colorRanges.length - 1);
-    return colorRanges[index];
+      const colorRanges = ["#eeeeee", "#9be9a8", "#40c463", "#30a14e", "#216e39"];
+      const index = count === 0 ? 0 : Math.min(Math.floor((count - 1) / settings.colorStep) + 1, colorRanges.length - 1);
+      return colorRanges[index];
   }
+  
 
   // Initiate the drawing
   function start() {
@@ -202,6 +203,93 @@ function buildActivityGraph(parentElement, options) {
   }
 
   // Initialization
-  processActivityList(settings.data);
   start();
+}
+
+// ------------------------------------------------------------
+
+function prepareBarChartData(activityData) {
+  const today = new Date();
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+  // Store counts by day, filling in zeros for missing days
+  const allDates = {};
+  let currentDate = new Date(oneYearAgo);
+  while (currentDate <= today) {
+      const dateStr = currentDate.toISOString().split("T")[0];
+      allDates[dateStr] = 0;
+      currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // Fill in the counts for the days that have data
+  Object.keys(activityData).forEach((dateStr) => {
+      if (allDates.hasOwnProperty(dateStr)) {
+          allDates[dateStr] = activityData[dateStr];
+      }
+  });
+
+  const labels = Object.keys(allDates);
+  const data = Object.values(allDates);
+
+  // Prepare month labels
+  const monthLabels = labels.map((dateStr) => {
+      const dateObj = new Date(dateStr);
+      return dateObj.getDate() === 1
+          ? dateObj.toLocaleString("default", { month: "short" }) : "";
+  });
+
+  return {
+      labels: labels,
+      data: data,
+      monthLabels: monthLabels,
+  };
+}
+
+function buildActivityBarChart(data) {
+  const preparedData = prepareBarChartData(data);
+
+  const barCtx = document.getElementById("activity-bar-chart").getContext("2d");
+  const myBarChart = new Chart(barCtx, {
+      type: "bar",
+      data: {
+          labels: preparedData.labels,
+          datasets: [
+              {
+                  label: "Messages",
+                  data: preparedData.data,
+                  // backgroundColor: "#216e39",
+                  borderColor: "#30a14e",
+                  borderWidth: 1,
+              },
+          ],
+      },
+      options: {
+          aspectRatio: 4,
+          plugins: {
+              legend: {
+                  display: false,
+              },
+          },
+          scales: {
+              x: {
+                  grid: {
+                      display: false, // Hide vertical grid lines
+                  },
+                  ticks: {
+                      callback: function (value, index) {
+                          // Only return the month label for the first day of each month
+                          return preparedData.monthLabels[index];
+                      },
+                      autoSkip: false, // Display all labels
+                      maxRotation: 0,
+                      minRotation: 0,
+                  },
+              },
+              y: {
+                  beginAtZero: true,
+              },
+          },
+      },
+  });
 }
