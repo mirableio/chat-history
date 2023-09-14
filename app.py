@@ -54,6 +54,7 @@ def get_conversations():
         "id": conv.id, 
         "title": conv.title_str,
         "created": conv.created_str,
+        "total_length": human_readable_time(conv.total_length, short=True),
         "is_favorite": conv.id in favorite_ids
         } for conv in conversations]
     return JSONResponse(content=conversations_data)
@@ -96,11 +97,7 @@ def get_statistics():
     # Calculate the min, max, and average lengths
     lengths = []
     for conv in conversations:
-        start_time = conv.created
-        end_time = max(msg.created for msg in conv.messages) if conv.messages else start_time
-        length = end_time - start_time
-        lengths.append((length.total_seconds(), conv.id))
-
+        lengths.append((conv.total_length, conv.id))
     # Sort conversations by length
     lengths.sort(reverse=True)
 

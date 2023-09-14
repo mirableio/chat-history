@@ -87,6 +87,13 @@ class Conversation(BaseModel):
     def title_str(self) -> str:
         return self.title or '[Untitled]'
 
+    @property
+    def total_length(self) -> int:
+        start_time = self.created
+        end_time = max(msg.created for msg in self.messages) if self.messages else start_time
+        return (end_time - start_time).total_seconds()
+
+
 
 def load_conversations(path: str) -> List[Conversation]:
     with open(path, 'r') as f:

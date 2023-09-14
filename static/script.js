@@ -62,7 +62,10 @@ function populateConversationsList() {
     
         sidebar.insertAdjacentHTML("beforeend", `
             <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between relative group" id="conv-${conv.id}">
-                <span class="mr-2">${conv.title}</span>                
+            <div class="inline-flex items-center">
+                <span class="mr-2">${conv.title}</span>
+                <small class="text-gray-500 whitespace-nowrap">${conv.total_length}</small>
+            </div> 
                 <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(' ')[1]}">${conv.created.split(' ')[0]}</small>
         
                 <div class="absolute right-20 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick('${conv.id}')">
