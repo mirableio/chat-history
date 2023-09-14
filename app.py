@@ -67,10 +67,30 @@ def get_messages(conv_id: str):
     if not conversation:
         return JSONResponse(content={"error": "Invalid conversation ID"}, status_code=404)
 
-    messages = [{"text": markdown(msg.text),
-                 "role": msg.role, 
-                 "created": msg.created_str
-                 } for msg in conversation.messages if msg]
+    messages = []
+    prev_created = None  # Keep track of the previous message's creation time
+    for msg in conversation.messages:
+        if not msg:
+            continue
+
+        # If there's a previous message and the time difference is 1 hour or more
+        if prev_created and (msg.created - prev_created).total_seconds() >= 3600:
+            delta = msg.created - prev_created
+            time_str = human_readable_time(delta.total_seconds())            
+            messages.append({
+                "text": f"{time_str} passed", 
+                "role": "internal"
+                })
+
+        messages.append({
+            "text": markdown(msg.text),
+            "role": msg.role, 
+            "created": msg.created_str
+        })
+
+        # Update the previous creation time for the next iteration
+        prev_created = msg.created
+
     response = {
         "conversation_id": conversation.id,
         "messages": messages

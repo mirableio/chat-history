@@ -129,17 +129,21 @@ async function loadChatMessages(convId) {
 
         // Populate the main content with messages
         const messages = data.messages;
-        messages.forEach((msg, index) => {
-            const bgColorClass = index % 2 === 0 ? '' : 'bg-gray-200';
+        let bgColorIndex = 0;
+        messages.forEach((msg) => {
+            const bgColorClass = bgColorIndex % 2 === 0 ? '' : 'bg-gray-200';
             mainContent.insertAdjacentHTML('beforeend', `
                 <div class="p-2 border-b ${bgColorClass}">
-                    <small class="text-gray-500">${msg.created}</small>
+                    <small class="text-gray-500">${msg.role == "internal" ? "" : msg.created}</small>
                     <br/>
-                    <strong>${msg.role}:</strong>
-                    <span>${msg.text}</span>
+                    <strong>${msg.role == "internal" ? "" : msg.role + ":"}</strong>
+                    <span class="${msg.role == "internal" ? "text-gray-400" : ""}">${msg.text}</span>
                 </div>
             `);
-        });
+            if (msg.role !== "internal") {
+                bgColorIndex++;
+            }
+    });
 
         scrollToTop();
     } catch (error) {
