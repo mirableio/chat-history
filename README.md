@@ -12,6 +12,8 @@ UI for navigating and organizing OpenAI's ChatGPT conversations.
 - List of favorite chats
 - Open conversations on the ChatGPT site
 
+![Screenshot](static/screenshot.png)
+
 ## Setup
 
 Currently can only be installed locally. Requires Python 3.10+
