@@ -12,7 +12,7 @@ import statistics
 
 from history import load_conversations
 from utils import time_group, human_readable_time
-from llms import load_create_embeddings, search_similar, TYPE_CONVERSATION, TYPE_MESSAGE
+from llms import load_create_embeddings, search_similar, openai_api_cost, TYPE_CONVERSATION, TYPE_MESSAGE
 
 DB_EMBEDDINGS = "data/embeddings.db"
 DB_SETTINGS = "data/settings.db"
@@ -146,6 +146,31 @@ def get_statistics():
         "Average chat length": avg_length,
         "Top longest chats": top_3_links
     })
+
+
+@api_app.get("/ai-cost")
+def get_ai_cost():
+    tokens_by_month = defaultdict(lambda: {'input': 0, 'output': 0})
+
+    for conv in conversations:
+        for msg in conv.messages:
+            year_month = msg.created.strftime('%Y-%m')
+            token_count = msg.count_tokens()
+
+            if msg.role == "user":
+                tokens_by_month[year_month]['input'] += openai_api_cost(msg.model_str, 
+                                                                        input=token_count)
+            else:
+                tokens_by_month[year_month]['output'] += openai_api_cost(msg.model_str,
+                                                                         output=token_count)
+
+    # Make a list of dictionaries
+    tokens_list = [
+        {'month': month, 'input': int(data['input']), 'output': int(data['output'])}
+        for month, data in sorted(tokens_by_month.items())
+    ]
+
+    return JSONResponse(content=tokens_list)
 
 
 # Search conversations and messages

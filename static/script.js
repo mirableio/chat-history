@@ -115,17 +115,14 @@ async function loadChatMessages(convId) {
         const data = await response.json();
 
         const mainContent = document.getElementById("main-content");
-        mainContent.innerHTML = ""; // Clear previous messages
-
-        // Create a header with a link to the conversation
-        mainContent.insertAdjacentHTML("beforeend", `
+        mainContent.innerHTML = `
             <div class="p-2 border-b text-right">
                 <a href="https://chat.openai.com/c/${data.conversation_id}"
                 target="_blank" rel="noopener noreferrer" class="hover:underline">Open in ChatGPT 
                     <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
                 </a>
             </div>
-        `);
+        `;
 
         // Populate the main content with messages
         const messages = data.messages;
@@ -244,6 +241,25 @@ async function searchConversations(query) {
     } catch (error) {
         console.error("Search failed:", error);
     }
+}
+
+async function loadAICostStats() {
+    scrollToTop();
+    const mainContent = document.getElementById("main-content");
+    mainContent.innerHTML = `
+        <div class="pt-10 text-center">
+            Loading...
+        </div>
+    `;
+
+    fetch('/api/ai-cost')
+        .then(response => response.json())
+        .then(data => {
+            buildAIStatsBarChart(data);
+        })
+        .catch(error => {
+            console.error('Error fetching AI cost data:', error);
+        });
 }
 
 // Scroll to the top of the main content area

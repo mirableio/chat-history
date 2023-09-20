@@ -4,6 +4,10 @@ from typing import List, Union, Optional
 from collections import OrderedDict
 from datetime import datetime
 from pydantic.v1 import BaseModel # v2 throws warnings
+import tiktoken
+
+
+DEFAULT_MODEL_SLUG = "gpt-3.5-turbo"
 
 
 class Author(BaseModel):
@@ -16,8 +20,8 @@ class Content(BaseModel):
     text: Optional[str]
 
 
-# class MessageMetadata(BaseModel):
-#     model_slug: Optional[str]
+class MessageMetadata(BaseModel):
+    model_slug: Optional[str]
 #     parent_id: Optional[str]
 
 
@@ -27,7 +31,7 @@ class Message(BaseModel):
     create_time: Optional[float]
     update_time: Optional[float]
     content: Optional[Content]
-#    metadata: MessageMetadata
+    metadata: MessageMetadata
 
     @property
     def text(self) -> str:
@@ -49,6 +53,17 @@ class Message(BaseModel):
     @property
     def created_str(self) -> str:
         return self.created.strftime('%Y-%m-%d %H:%M:%S')
+    
+    @property
+    def model_str(self) -> str:
+        return self.metadata.model_slug or DEFAULT_MODEL_SLUG
+    
+    def count_tokens(self) -> int:
+        try:
+            encoding = tiktoken.encoding_for_model(self.model_str)
+        except KeyError:
+            encoding = tiktoken.encoding_for_model(DEFAULT_MODEL_SLUG)
+        return len(encoding.encode(self.text))
 
 
 class MessageMapping(BaseModel):

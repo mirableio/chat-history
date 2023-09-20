@@ -293,3 +293,94 @@ function buildActivityBarChart(data) {
       },
   });
 }
+
+// ------------------------------------------------------------
+function buildAIStatsBarChart(data) {
+    // Prepare data for the chart
+    const labels = [];
+    const inputCosts = [];
+    const outputCosts = [];
+    
+    for (const entry of data) {
+        labels.push(entry.month);
+        inputCosts.push(entry.input / 100);  // Convert to dollars
+        outputCosts.push(entry.output / 100);  // Convert to dollars
+    }
+
+    const mainContent = document.getElementById("main-content");
+    mainContent.innerHTML = `
+        <div>
+          <h1 class="pt-10 pb-4 text-center text-xl">OpenAI estimated usage costs</h1>
+          <canvas id="ai-cost-bar-chart"></canvas>
+        </div>
+    `;
+
+    const monthLabels = labels.map((dateStr) => {
+        const dateObj = new Date(dateStr);
+        return dateObj.getDate() === 1
+            ? dateObj.toLocaleString("default", { month: "short" }) : "";
+    });
+
+    // Create the chart
+    const barCtx = document.getElementById('ai-cost-bar-chart').getContext('2d');
+    const myBarChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+            labels: monthLabels,
+            datasets: [
+                {
+                    label: 'Input $',
+                    data: inputCosts,
+                    minBarLength: 5,
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Output $',
+                    data: outputCosts,
+                    minBarLength: 5,
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            aspectRatio: 4,
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                annotation: {
+                  annotations: {
+                    line1: {
+                      type: 'line',
+                      yMin: 20,
+                      yMax: 20,
+                      borderColor: 'rgb(255, 99, 132)',
+                      borderWidth: 2,
+                    }
+                  }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false // Hide vertical grid lines
+                    },
+                    stacked: true,
+                },
+                y: {
+                    beginAtZero: true,
+                    stacked: true,
+                    ticks: {
+                      callback: function(value, index, values) {
+                          return '$' + value.toFixed(2);  // Format costs as dollar values
+                      }
+                  }
+                }
+            }
+        }
+    });
+}

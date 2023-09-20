@@ -125,3 +125,51 @@ def search_similar(query, embeddings_ids, embeddings_index, top_n=10):
     _, indices = embeddings_index.search(query_vector, top_n)
     similar_ids = [embeddings_ids[i] for i in indices[0]]
     return similar_ids[:top_n]
+
+
+def openai_api_cost(model, input=0, output=0):
+    pricing = {
+        "gpt-3.5-turbo-4k": {
+            "prompt": 0.0015,
+            "completion": 0.002,
+        },
+        "gpt-3.5-turbo-16k": {
+            "prompt": 0.003,
+            "completion": 0.004,
+        },
+        "gpt-4-8k": {
+            "prompt": 0.03,
+            "completion": 0.06,
+        },
+        "gpt-4-32k": {
+            "prompt": 0.06,
+            "completion": 0.12,
+        },
+        "text-embedding-ada-002-v2": {
+            "prompt": 0.0001,
+            "completion": 0.0001,
+        }
+    }
+
+    try:
+        model_pricing = pricing[model]
+    except:
+        if 'gpt-4' in model:
+            if input + output > 8192:
+                model_pricing = pricing["gpt-4-32k"]
+            else:
+                model_pricing = pricing["gpt-4-8k"]
+        elif 'gpt-3.5' in model:
+            if input + output > 4096:
+                model_pricing = pricing["gpt-3.5-turbo-16k"]
+            else:
+                model_pricing = pricing["gpt-3.5-turbo-4k"]
+        else:
+            model_pricing = pricing["gpt-3.5-turbo-4k"]
+        
+    if input > 0:
+        return model_pricing["prompt"] * input / 10 # in cents
+    elif output > 0:
+        return model_pricing["completion"] * output / 10 # in cents
+    else:
+        raise ValueError("No token count specified")
