@@ -28,4 +28,4 @@ RUN pip install python-multipart
 EXPOSE 80
 
 # Define the command to run the app using Uvicorn
-CMD ["uvicorn", "app:app", "--host", "127.0.0.1", "--port", "80"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "80"]
