@@ -274,7 +274,8 @@ def connect_settings_db():
 
 @app.get("/upload")
 def upload_file_prompt():
-    return HTMLResponse("""
+    file_exists = os.path.exists(CONVERSATIONS_PATH)
+    return HTMLResponse(f"""
         <html lang="en">
             <head>
                 <meta charset="utf-8" />
@@ -284,8 +285,9 @@ def upload_file_prompt():
             </head>
             <body class="bg-gray-200 h-screen flex items-center justify-center">
                 <div class="bg-white p-8 rounded shadow-lg">
-                    <h1 class="text-2xl mb-4">Please upload the conversations.json file</h1>
-                    <form action="/upload/" method="post" enctype="multipart/form-data">
+                    <h1 class="text-2xl mb-4">{'Please upload the conversations.json file' if not file_exists else 'File exists! Choose an action:'}</h1>
+                    {'<form action="/delete_file" method="post"><button type="submit" class="bg-red-500 text-white p-2 rounded">Delete Existing File</button></form>' if file_exists else ''}
+                    <form action="/upload" method="post" enctype="multipart/form-data" class="mt-4">
                         <input type="file" name="file" class="mb-4">
                         <br>
                         <button type="submit" class="bg-blue-500 text-white p-2 rounded">Upload</button>
@@ -294,6 +296,13 @@ def upload_file_prompt():
             </body>
         </html>
     """)
+
+@app.post("/delete_file")
+def delete_file():
+    if os.path.exists(CONVERSATIONS_PATH):
+        os.remove(CONVERSATIONS_PATH)
+    return RedirectResponse(url="/", status_code=303)
+
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
