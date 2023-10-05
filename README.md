@@ -14,6 +14,9 @@ UI for navigating and organizing OpenAI's ChatGPT conversations.
 
 ![Screenshot](static/screenshot.png)
 
+[Docker Hub Image](https://hub.docker.com/layers/abalmahfadi/chat-history-app/1)
+
+
 ## Setup
 
 Currently can only be installed locally. Requires Python 3.10+
