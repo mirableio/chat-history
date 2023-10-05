@@ -14,7 +14,7 @@ UI for navigating and organizing OpenAI's ChatGPT conversations.
 
 ![Screenshot](static/screenshot.png)
 
-[Docker Hub Image](https://hub.docker.com/layers/abalmahfadi/chat-history-app/1)
+[Docker Hub Image](https://hub.docker.com/layers/abalmahfadi/chat-history-app/1/images/sha256:5048890aa4a2ab8bd935a59fa12df64b7c028948d3ccd1610b35feedd77fde17?uuid=3C4FE425-AC33-44B0-8EE4-A1C54D21A883)
 
 
 ## Setup
