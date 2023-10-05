@@ -2,7 +2,7 @@
 name = "chat-history"
 version = "0.1.0"
 description = ""
-authors = ["Dima Kuchin <dima@mirable.io>"]
+authors = ["Abdullah Almahfadi <abalmahfadi@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
