@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Query, UploadFile, File
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, RedirectResponse
 
+from fastapi.staticfiles import StaticFiles
+import os
 import sqlite3
 import openai
 import toml
@@ -16,13 +17,16 @@ from llms import load_create_embeddings, search_similar, openai_api_cost, TYPE_C
 
 DB_EMBEDDINGS = "data/embeddings.db"
 DB_SETTINGS = "data/settings.db"
-
+CONVERSATIONS_PATH = 'data/conversations.json'
 
 # Initialize FastAPI app
 app = FastAPI()
 api_app = FastAPI(title="API")
 
-conversations = load_conversations('data/conversations.json')
+if os.path.exists(CONVERSATIONS_PATH):
+    conversations = load_conversations(CONVERSATIONS_PATH)
+else:
+    conversations = []
 
 try:
     SECRETS = toml.load("data/secrets.toml")
@@ -268,5 +272,58 @@ def connect_settings_db():
     return conn
 
 
-app.mount("/api", api_app)
-app.mount("/", StaticFiles(directory="static", html=True), name="Static")
+@app.get("/upload")
+def upload_file_prompt():
+    return HTMLResponse("""
+        <html lang="en">
+            <head>
+                <meta charset="utf-8" />
+                <title>Upload Conversations</title>
+                <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.15/dist/tailwind.min.css" rel="stylesheet" />
+                <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+            </head>
+            <body class="bg-gray-200 h-screen flex items-center justify-center">
+                <div class="bg-white p-8 rounded shadow-lg">
+                    <h1 class="text-2xl mb-4">Please upload the conversations.json file</h1>
+                    <form action="/upload/" method="post" enctype="multipart/form-data">
+                        <input type="file" name="file" class="mb-4">
+                        <br>
+                        <button type="submit" class="bg-blue-500 text-white p-2 rounded">Upload</button>
+                    </form>
+                </div>
+            </body>
+        </html>
+    """)
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    with open(CONVERSATIONS_PATH, "wb") as buffer:
+        contents = await file.read()
+        buffer.write(contents)
+    global conversations
+    conversations = load_conversations(CONVERSATIONS_PATH)
+    return RedirectResponse(url="/post-upload", status_code=303)
+
+@app.get("/post-upload")
+def post_upload():
+    return RedirectResponse(url="/", status_code=303)
+
+
+if not os.path.exists(CONVERSATIONS_PATH):
+    @app.get("/")
+    def root():
+        if not os.path.exists(CONVERSATIONS_PATH):
+            # If the conversations file doesn't exist, return the upload form
+            return upload_file_prompt()
+        else:
+            # Ideally, this should serve the main content of your application.
+            # Assuming you have an index.html in the static directory, it should be automatically served.
+            # If not, you can manually serve it or redirect to another route.
+            app.mount("/api", api_app)
+            app.mount("/", StaticFiles(directory="static", html=True), name="Static")
+            return FileResponse("static/index.html")
+
+else:
+    app.mount("/api", api_app)
+    app.mount("/", StaticFiles(directory="static", html=True), name="Static")
+   

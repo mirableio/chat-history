@@ -4,7 +4,7 @@ all:
 
 run:
 	uvicorn app:app --reload
-
+	
 install:
 	pip install poetry
 	poetry install
