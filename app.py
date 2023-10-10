@@ -25,8 +25,7 @@ api_app = FastAPI(title="API")
 
 if os.path.exists(CONVERSATIONS_PATH):
     conversations = load_conversations(CONVERSATIONS_PATH)
-else:
-    conversations = []
+
 
 try:
     SECRETS = toml.load("data/secrets.toml")

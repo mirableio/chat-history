@@ -11,7 +11,7 @@ COPY . /app
 RUN pip install poetry
 
 # Install project dependencies using Poetry
-RUN poetry install --no-dev
+RUN poetry install
 
 # Explicitly install uvicorn
 RUN pip install uvicorn
