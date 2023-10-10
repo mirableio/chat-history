@@ -1,6 +1,7 @@
 import json
 import sys
-from typing import List, Union, Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional, Union
 from collections import OrderedDict
 from datetime import datetime
 from pydantic.v1 import BaseModel # v2 throws warnings
@@ -14,15 +15,24 @@ class Author(BaseModel):
     role: str
 
 
+class Part(BaseModel):
+    content_type: str
+    asset_pointer: Optional[str]
+    size_bytes: Optional[int]
+    width: Optional[int]
+    height: Optional[int]
+    fovea: Optional[Union[str, None]]
+    metadata: Optional[Union[dict, None]]
+
 class Content(BaseModel):
     content_type: str
-    parts: Optional[List[Union[str, OrderedDict[str, Union[str, float, bool]]]]]
+    parts: Optional[List[Union[Part, str]]]
     text: Optional[str]
 
 
 class MessageMetadata(BaseModel):
     model_slug: Optional[str]
-#     parent_id: Optional[str]
+    parent_id: Optional[str]
 
 
 class Message(BaseModel):
