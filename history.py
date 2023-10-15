@@ -14,9 +14,23 @@ class Author(BaseModel):
     role: str
 
 
+class ContentPartMetadata(BaseModel):
+    dalle: dict
+
+
+class ContentPart(BaseModel):
+    content_type: str
+    asset_pointer: Optional[str]
+    size_bytes: Optional[int]
+    width: Optional[int]
+    height: Optional[int]
+    fovea: Optional[None]
+    metadata: Optional[ContentPartMetadata]
+
+
 class Content(BaseModel):
     content_type: str
-    parts: Optional[List[Union[str, OrderedDict[str, Union[str, float, bool]]]]]
+    parts: Optional[List[Union[str, ContentPart]]]
     text: Optional[str]
 
 
@@ -38,8 +52,10 @@ class Message(BaseModel):
         if self.content:
             if self.content.text:
                 return self.content.text
-            elif self.content.parts:
+            elif self.content.content_type == 'text' and self.content.parts: 
                 return " ".join(str(part) for part in self.content.parts)
+            elif self.content.content_type == 'multimodal_text':
+                return "[TODO: process DALL-E and other multimodal]"
         return ""
     
     @property

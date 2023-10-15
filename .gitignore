@@ -1,8 +1,10 @@
 *.pyc
 .python-version
-conversations.json
+conversations*.json
 poetry.lock
 .vscode
 secrets.toml
 embeddings.db
 settings.db
+tmp_*
+.ipynb_checkpoints

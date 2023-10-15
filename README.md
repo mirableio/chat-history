@@ -22,5 +22,5 @@ Currently can only be installed locally. Requires Python 3.10+
 2. Unzip the download, place `conversations.json` in the `data` folder
 3. `make install`
 4. `make run`
-5. Open http://127.0.0.1:8000 in your browser
+5. Open http://127.0.0.1:8080 in your browser
 6. *Optional* - copy `secrets.template.toml` to `data/secrets.toml` and update OpenAI API key, then restart the server. First run will take a while to create embeddings. 10MB JSON: ~30 min, ~$0.10 cost.

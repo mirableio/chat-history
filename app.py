@@ -16,16 +16,18 @@ from llms import load_create_embeddings, search_similar, openai_api_cost, TYPE_C
 
 DB_EMBEDDINGS = "data/embeddings.db"
 DB_SETTINGS = "data/settings.db"
+SECRETS_PATH = "data/secrets.toml"
+CONVERSATIONS_PATH = "data/conversations.json"
 
 
 # Initialize FastAPI app
 app = FastAPI()
 api_app = FastAPI(title="API")
 
-conversations = load_conversations('data/conversations.json')
+conversations = load_conversations(CONVERSATIONS_PATH)
 
 try:
-    SECRETS = toml.load("data/secrets.toml")
+    SECRETS = toml.load(SECRETS_PATH)
     OPENAI_ENABLED = True
 except:
     print("-- No secrets found. Not able to access the OpenAI API.")
