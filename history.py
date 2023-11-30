@@ -79,7 +79,7 @@ class Message(BaseModel):
             encoding = tiktoken.encoding_for_model(self.model_str)
         except KeyError:
             encoding = tiktoken.encoding_for_model(DEFAULT_MODEL_SLUG)
-        return len(encoding.encode(self.text))
+        return len(encoding.encode(self.text, disallowed_special=()))
 
 
 class MessageMapping(BaseModel):
