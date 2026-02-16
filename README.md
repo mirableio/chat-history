@@ -1,6 +1,35 @@
 # Chat History
 
-UI and local tooling for browsing and exporting ChatGPT and Claude conversation history.
+Browse and export your ChatGPT and Claude conversations locally.
+
+![Screenshot](screenshot.png)
+
+## Getting Started
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+1. **Export your chats** from [ChatGPT](https://chatgpt.com/#settings/DataControls) or
+   [Claude](https://claude.ai/settings/account) (Settings → Export data).
+   Both services send a ZIP file by email.
+
+2. **Create a folder** for your chat history, save the ZIP there,
+   and open a terminal in that folder. The wizard will store all data inside it.
+
+3. **Run the setup wizard:**
+
+   ```bash
+   uvx chat-history
+   ```
+
+   The wizard finds your export files, configures everything, and opens the browser.
+
+Next time, run `uvx chat-history` in the same folder to start browsing.
+
+To export all conversations as markdown (useful for feeding to other AI tools):
+
+```bash
+uvx chat-history export
+```
 
 ## Features
 
@@ -10,126 +39,75 @@ UI and local tooling for browsing and exporting ChatGPT and Claude conversation 
 - Activity and token statistics
 - Export conversations to markdown for downstream AI workflows
 
-![Screenshot](screenshot.png)
+## CLI Reference
 
-## Basic Usage (uvx)
+All commands work as `uvx chat-history <command>` or, if installed locally, `chat-history <command>`.
 
-- Python 3.11+
-- `uv`
+| Command | Description |
+|---------|-------------|
+| *(none)* | Start server if configured, otherwise run setup wizard |
+| `init` | Run the interactive setup wizard |
+| `serve` | Start the web server |
+| `export` | Export conversations to markdown |
+| `inspect` | Print conversation and message counts |
 
-### Quick start
-
-```bash
-uvx chat-history
-```
-
-Auto mode behavior:
-
-- If `data/.env` exists in current directory, it starts the server.
-- If `data/.env` is missing, it starts the interactive setup wizard.
-
-Common commands:
+### serve
 
 ```bash
-uvx chat-history init
-uvx chat-history serve --port 8080
-uvx chat-history inspect
-uvx chat-history export --provider all --out ./data/export --clean
+uvx chat-history serve [--host 127.0.0.1] [--port 8080] [--no-browser]
 ```
 
-Then open [http://127.0.0.1:8080](http://127.0.0.1:8080).
+### export
+
+```bash
+uvx chat-history export [--provider chatgpt|claude|all] [--out DIR] [--clean]
+                        [--exclude-system] [--exclude-tool]
+                        [--exclude-thinking] [--exclude-attachments]
+```
+
+- `--clean` removes old export files before writing (scoped to `--provider` if set)
+- Default output: `./data/export/{chatgpt|claude}/`
+
+### init
+
+```bash
+uvx chat-history init [--path DIR]
+```
+
+Scans the current folder and `~/Downloads` for export ZIPs, validates them,
+extracts to `./data/`, writes `./data/.env`, and offers to start the server.
+Supports adding a second provider to an existing setup.
+
+## Configuration
+
+All config lives in `./data/.env` (created by the wizard or manually):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHAT_HISTORY_DATA_DIR` | `data` | Root directory for derived data |
+| `CHAT_HISTORY_CHATGPT_PATH` | — | Path to ChatGPT export folder or `conversations.json` |
+| `CHAT_HISTORY_CLAUDE_PATH` | — | Path to Claude export folder or `conversations.json` |
+| `CHAT_HISTORY_OPENAI_ENABLED` | `false` | Enable semantic search |
+| `OPENAI_API_KEY` | — | Required if semantic search is enabled |
+| `OPENAI_ORGANIZATION` | — | Optional OpenAI org |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for semantic search |
+| `CHAT_HISTORY_SETTINGS_DB_PATH` | — | Override path for settings SQLite DB |
 
 ## Developer Setup
 
-1. Sync dependencies:
-   - `make install`
-2. Create local config:
-   - `mkdir -p data && cp .env.example data/.env`
-3. Set provider export paths in `data/.env`:
-   - `CHAT_HISTORY_CHATGPT_PATH=/absolute/path/to/chatgpt/export/folder` (or direct `conversations.json`)
-   - `CHAT_HISTORY_CLAUDE_PATH=/absolute/path/to/claude/export/folder` (or direct `conversations.json`)
-4. Start app:
-   - `make run`
-
-## Developer Workflow
-
-- Dev server with reload: `make dev`
-- Tests: `make test`
-- Run CLI directly: `uv run chat-history --help`
-- Run packaged entrypoint from repo checkout: `uvx --from . chat-history --help`
-
-Data layout under `CHAT_HISTORY_DATA_DIR`:
-
-```text
-DATA_DIR/
-  chatgpt/
-    embeddings.db
-  claude/
-    embeddings.db
-  settings.db
-  export/
+```bash
+make install    # uv sync
+make dev        # uvicorn with hot-reload on :8080
+make test       # run tests
 ```
 
-## Configuration (`data/.env`)
+Install as a global command from the local repo (editable, changes reflected immediately):
 
-- `CHAT_HISTORY_DATA_DIR` (default: `data`)
-- `CHAT_HISTORY_CHATGPT_PATH` (optional, folder or `conversations.json`)
-- `CHAT_HISTORY_CLAUDE_PATH` (optional, folder or `conversations.json`)
-- `CHAT_HISTORY_SETTINGS_DB_PATH` (optional)
-- `OPENAI_API_KEY` (optional; enables semantic search)
-- `OPENAI_ORGANIZATION` (optional)
-- `CHAT_HISTORY_OPENAI_ENABLED` (`true` / `false`, default `false`)
-- `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`)
-
-## CLI Reference
-
-Main CLI entrypoint: `chat-history`
-
-- Start server:
-  - `uv run chat-history serve --port 8080`
-- Auto mode:
-  - `uv run chat-history`
-  - If `data/.env` exists in the current directory, starts the server.
-  - If `data/.env` does not exist, starts interactive setup wizard.
-  - Config is loaded from `./data/.env` only (current working directory); default data path is `./data`.
-- Interactive setup wizard:
-  - `uv run chat-history init`
-  - `uv run chat-history init --path /absolute/path/to/project-dir`
-
-- Inspect loaded data:
-  - `uv run chat-history inspect`
-- Export conversations:
-  - `uv run chat-history export --provider all --out /tmp/chat-export`
-  - Add `--clean` to remove old export files before writing new ones.
-  - Output layout: `/tmp/chat-export/{chatgpt|claude}/yyyy-mm-dd-hash.md`
-
-Filters:
-
-- `--provider chatgpt|claude|all`
-- `--exclude-system`
-- `--exclude-tool`
-- `--exclude-thinking`
-- `--exclude-attachments`
-- `--clean`
-
-## Global Command (Local Editable Install)
-
-Install the local repo as a global tool:
-
-- `uv tool install -e .`
-
-Then run from any directory:
-
-- `chat-history --help`
-- `chat-history`
-- `chat-history serve --port 8080`
-- `chat-history init`
-- `chat-history inspect`
-- `chat-history export --provider all`
-
-Uninstall:
-
-- `uv tool uninstall chat-history`
+```bash
+make tool-install         # uv tool install -e .
+chat-history              # works from any directory
+make tool-uninstall       # uv tool uninstall chat-history
+```
 
 ## Notes
 
