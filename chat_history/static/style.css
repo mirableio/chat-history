@@ -27,11 +27,53 @@
     font-size: small;
 }
 
-.heart-div span {
-    color: rgb(229,231,235);
+.heart-div {
+    right: 6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
-.heart-div.is-favorite span {
-    color: red;
+
+.group:hover .heart-div,
+.heart-div.is-favorite {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.heart-emoji {
+    display: inline-block;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.heart-emoji::before {
+    content: "🤍";
+}
+
+.group:hover .heart-div:not(.is-favorite) .heart-emoji::before {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.heart-div.is-favorite .heart-emoji {
+    font-size: 24px;
+}
+
+.heart-div.is-favorite .heart-emoji::before {
+    content: "♡";
+    color: #ef4444;
+    text-shadow: none;
+}
+
+.group:hover .heart-div.is-favorite .heart-emoji::before {
+    content: "♡";
+    color: #dc2626;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 
 .provider-badge {

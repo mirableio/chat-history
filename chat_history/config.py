@@ -6,6 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+ENV_PATH = Path("data") / ".env"
+
 
 def _as_bool(raw_value: str | None, default: bool) -> bool:
     if raw_value is None:
@@ -47,7 +49,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    load_dotenv()
+    load_dotenv(dotenv_path=Path.cwd() / ENV_PATH, override=False)
 
     data_dir = Path(os.getenv("CHAT_HISTORY_DATA_DIR", "data")).expanduser()
     default_chatgpt_path = data_dir / "conversations.json"

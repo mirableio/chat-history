@@ -13,7 +13,7 @@ try:
 except Exception:  # pragma: no cover - import guard for environments without faiss
     faiss = None
 
-from models import ConversationRecord
+from chat_history.models import ConversationRecord
 
 TYPE_CONVERSATION = "conversation"
 TYPE_MESSAGE = "message"

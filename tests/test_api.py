@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from server import create_app
+from chat_history.server import create_app
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

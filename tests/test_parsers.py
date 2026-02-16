@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from parsers import (
+from chat_history.parsers import (
     load_provider_conversations,
     parse_chatgpt_export,
     parse_claude_export,

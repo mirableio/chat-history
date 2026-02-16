@@ -6,10 +6,10 @@ import unittest
 from argparse import Namespace
 from pathlib import Path
 
-from config import load_settings
-from exporter import export_conversation
-from manage import run_export
-from services import ChatHistoryService
+from chat_history.cli import _cmd_export
+from chat_history.config import load_settings
+from chat_history.exporter import export_conversation
+from chat_history.services import ChatHistoryService
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -56,7 +56,6 @@ class ExporterTests(unittest.TestCase):
         output_path = export_conversation(
             conversation=conversation,
             output_dir=output_dir,
-            output_format="markdown",
             include_system=True,
             include_tool=True,
             include_thinking=True,
@@ -64,6 +63,8 @@ class ExporterTests(unittest.TestCase):
         )
 
         self.assertTrue(output_path.exists())
+        self.assertEqual(output_path.parent.name, conversation.provider)
+        self.assertRegex(output_path.name, r"^\d{4}-\d{2}-\d{2}-[0-9a-f]{12}\.md$")
         content = output_path.read_text(encoding="utf-8")
         self.assertIn(f"Provider: `{conversation.provider}`", content)
         self.assertIn(f"Conversation ID: `{conversation.id}`", content)
@@ -71,15 +72,15 @@ class ExporterTests(unittest.TestCase):
     def test_run_export_clean_removes_provider_specific_old_files(self) -> None:
         service = self._build_service()
         output_dir = Path(self._tmp_dir.name) / "export-clean"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        stale_claude = output_dir / "claude--stale-entry--old.md"
-        stale_chatgpt = output_dir / "chatgpt--stale-entry--old.md"
+        stale_claude = output_dir / "claude" / "2001-01-01-aaaabbbbcccc.md"
+        stale_chatgpt = output_dir / "chatgpt" / "2001-01-01-ddddeeeeffff.md"
+        stale_claude.parent.mkdir(parents=True, exist_ok=True)
+        stale_chatgpt.parent.mkdir(parents=True, exist_ok=True)
         stale_claude.write_text("stale claude", encoding="utf-8")
         stale_chatgpt.write_text("stale chatgpt", encoding="utf-8")
 
         args = Namespace(
             provider="claude",
-            format="markdown",
             out=output_dir,
             clean=True,
             exclude_system=False,
@@ -88,11 +89,11 @@ class ExporterTests(unittest.TestCase):
             exclude_attachments=False,
         )
 
-        exit_code = run_export(service, args)
+        exit_code = _cmd_export(service, args)
         self.assertEqual(exit_code, 0)
         self.assertFalse(stale_claude.exists())
         self.assertTrue(stale_chatgpt.exists())
-        exported_claude = list(output_dir.glob("claude--*.md"))
+        exported_claude = list((output_dir / "claude").glob("*.md"))
         self.assertGreater(len(exported_claude), 0)
 
 

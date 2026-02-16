@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import load_settings
-from services import ChatHistoryService
+from chat_history.config import load_settings
+from chat_history.services import ChatHistoryService
+
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def _get_service(request: Request) -> ChatHistoryService:
@@ -79,5 +83,5 @@ def create_app() -> FastAPI:
         }
 
     app.mount("/api", api_app)
-    app.mount("/", StaticFiles(directory="static", html=True), name="Static")
+    app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="Static")
     return app

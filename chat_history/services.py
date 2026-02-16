@@ -7,24 +7,24 @@ from urllib.parse import urlencode
 
 from markdown import markdown
 
-from config import Settings
-from embeddings import (
+from chat_history.config import Settings
+from chat_history.embeddings import (
     TYPE_CONVERSATION,
     ProviderEmbeddingIndex,
     build_provider_embedding_index,
     create_openai_client,
     semantic_search,
 )
-from models import (
+from chat_history.models import (
     ATTACHMENT_BLOCK_TYPES,
     THINKING_BLOCK_TYPES,
     TOOL_BLOCK_TYPES,
     ConversationRecord,
     MessageRecord,
 )
-from parsers import load_provider_conversations
-from storage import SettingsStore
-from utils import human_readable_time, time_group
+from chat_history.parsers import load_provider_conversations
+from chat_history.storage import SettingsStore
+from chat_history.utils import human_readable_time, time_group
 
 
 class ChatHistoryService:

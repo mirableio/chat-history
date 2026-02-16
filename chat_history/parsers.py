@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from models import ContentBlock, ConversationRecord, MessageRecord, Provider, utc_now
+from chat_history.models import ContentBlock, ConversationRecord, MessageRecord, Provider, utc_now
 
 CITATION_MARKER_RE = re.compile(r"cite.*?")
 MARKDOWN_LINK_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")

@@ -347,8 +347,8 @@ function populateConversationsList() {
                     <span class="mr-2 truncate">${conv.title}</span>
                 </div>
                 <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(" ")[1]}">${conv.created.split(" ")[0]}</small>
-                <div class="absolute right-24 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick(event, '${conv.provider}', '${conv.id}')">
-                    <span class="material-symbols-outlined heart-icon" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 24px !important;">favorite</span>
+                <div class="absolute cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick(event, '${conv.provider}', '${conv.id}')">
+                    <span class="heart-emoji" aria-hidden="true"></span>
                 </div>
             </div>
         `);
