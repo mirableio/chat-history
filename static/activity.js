@@ -296,91 +296,83 @@ function buildActivityBarChart(data) {
 
 // ------------------------------------------------------------
 function buildAIStatsBarChart(data) {
-    // Prepare data for the chart
-    const labels = [];
-    const inputCosts = [];
-    const outputCosts = [];
-    
-    for (const entry of data) {
-        labels.push(entry.month);
-        inputCosts.push(entry.input / 100);  // Convert to dollars
-        outputCosts.push(entry.output / 100);  // Convert to dollars
+    const mainContent = document.getElementById("main-content");
+    if (!data || data.length === 0) {
+        mainContent.innerHTML = `
+            <div class="pt-10 text-center">No token statistics available.</div>
+        `;
+        return;
     }
 
-    const mainContent = document.getElementById("main-content");
+    const labels = [];
+    const inputTokens = [];
+    const outputTokens = [];
+    for (const entry of data) {
+        labels.push(`${entry.provider}:${entry.model}`);
+        inputTokens.push(entry.input_tokens || 0);
+        outputTokens.push(entry.output_tokens || 0);
+    }
+
     mainContent.innerHTML = `
         <div>
-          <h1 class="pt-10 pb-4 text-center text-xl">OpenAI estimated usage costs</h1>
+          <h1 class="pt-10 pb-4 text-center text-xl">Token usage by provider and model</h1>
           <canvas id="ai-cost-bar-chart"></canvas>
         </div>
     `;
 
-    const monthLabels = labels.map((dateStr) => {
-        const dateObj = new Date(dateStr);
-        return dateObj.getDate() === 1
-            ? dateObj.toLocaleString("default", { month: "short" }) : "";
-    });
-
-    // Create the chart
-    const barCtx = document.getElementById('ai-cost-bar-chart').getContext('2d');
-    const myBarChart = new Chart(barCtx, {
-        type: 'bar',
+    const barCtx = document.getElementById("ai-cost-bar-chart").getContext("2d");
+    new Chart(barCtx, {
+        type: "bar",
         data: {
-            labels: monthLabels,
+            labels: labels,
             datasets: [
                 {
-                    label: 'Input $',
-                    data: inputCosts,
+                    label: "Input tokens",
+                    data: inputTokens,
                     minBarLength: 5,
-                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
+                    backgroundColor: "rgba(75, 192, 192, 0.5)",
+                    borderColor: "rgba(75, 192, 192, 1)",
+                    borderWidth: 1,
                 },
                 {
-                    label: 'Output $',
-                    data: outputCosts,
+                    label: "Output tokens",
+                    data: outputTokens,
                     minBarLength: 5,
-                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    borderWidth: 1
-                }
-            ]
+                    backgroundColor: "rgba(255, 99, 132, 0.5)",
+                    borderColor: "rgba(255, 99, 132, 1)",
+                    borderWidth: 1,
+                },
+            ],
         },
         options: {
-            aspectRatio: 4,
+            aspectRatio: 3,
             plugins: {
                 legend: {
-                    display: false,
+                    display: true,
                 },
-                annotation: {
-                  annotations: {
-                    line1: {
-                      type: 'line',
-                      yMin: 20,
-                      yMax: 20,
-                      borderColor: 'rgb(255, 99, 132)',
-                      borderWidth: 2,
-                    }
-                  }
-                }
             },
             scales: {
                 x: {
                     grid: {
-                        display: false // Hide vertical grid lines
+                        display: false,
                     },
                     stacked: true,
+                    ticks: {
+                        autoSkip: false,
+                        maxRotation: 65,
+                        minRotation: 65,
+                    },
                 },
                 y: {
                     beginAtZero: true,
                     stacked: true,
                     ticks: {
-                      callback: function(value, index, values) {
-                          return '$' + value.toFixed(2);  // Format costs as dollar values
-                      }
-                  }
-                }
-            }
-        }
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        },
+                    },
+                },
+            },
+        },
     });
 }

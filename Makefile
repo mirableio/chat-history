@@ -3,8 +3,7 @@ all:
 	@echo "Try 'make run'"
 
 run:
-	uvicorn app:app --reload --port 8080
+	uv run uvicorn app:app --reload --port 8080
 
 install:
-	pip install poetry
-	poetry install
+	uv sync

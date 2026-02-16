@@ -1,9 +1,12 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def time_group(dt):
-    now = datetime.now()
-    today = datetime(now.year, now.month, now.day)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     yesterday = today - timedelta(days=1)
     last_week = today - timedelta(days=7)
     last_30_days = today - timedelta(days=30)

@@ -1,0 +1,148 @@
+[
+  {
+    "id": "chatgpt-conv-1",
+    "title": "Branching Conversation",
+    "create_time": 1730000000.0,
+    "update_time": 1730000300.0,
+    "current_node": "assistant-main",
+    "default_model_slug": "gpt-4-5",
+    "mapping": {
+      "root": {
+        "id": "root",
+        "parent": null,
+        "children": [
+          "user-1"
+        ],
+        "message": null
+      },
+      "user-1": {
+        "id": "user-1",
+        "parent": "root",
+        "children": [
+          "assistant-main",
+          "assistant-alt"
+        ],
+        "message": {
+          "id": "msg-user-1",
+          "author": {
+            "role": "user"
+          },
+          "create_time": 1730000001.0,
+          "update_time": 1730000001.0,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "How do I build an export command?"
+            ]
+          },
+          "metadata": {
+            "model_slug": "gpt-4-5"
+          }
+        }
+      },
+      "assistant-main": {
+        "id": "assistant-main",
+        "parent": "user-1",
+        "children": [],
+        "message": {
+          "id": "msg-assistant-main",
+          "author": {
+            "role": "assistant"
+          },
+          "create_time": 1730000010.0,
+          "update_time": 1730000012.0,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              {
+                "content_type": "audio_transcription",
+                "text": "Use argparse and subcommands."
+              },
+              {
+                "content_type": "image_asset_pointer",
+                "asset_pointer": "file-service://image-1"
+              }
+            ]
+          },
+          "metadata": {
+            "model_slug": "gpt-4-5"
+          }
+        }
+      },
+      "assistant-alt": {
+        "id": "assistant-alt",
+        "parent": "user-1",
+        "children": [],
+        "message": {
+          "id": "msg-assistant-alt",
+          "author": {
+            "role": "assistant"
+          },
+          "create_time": 1730000011.0,
+          "update_time": 1730000011.0,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "This regenerated answer should not be selected."
+            ]
+          },
+          "metadata": {
+            "model_slug": "gpt-4-5"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "chatgpt-conv-2",
+    "title": "Unknown Type Coverage",
+    "create_time": 1731000000.0,
+    "update_time": 1731000300.0,
+    "current_node": "node-2",
+    "mapping": {
+      "node-1": {
+        "id": "node-1",
+        "parent": null,
+        "children": [
+          "node-2"
+        ],
+        "message": {
+          "id": "node-1-msg",
+          "author": {
+            "role": "system"
+          },
+          "create_time": 1731000001.0,
+          "update_time": 1731000001.0,
+          "content": {
+            "content_type": "system_error",
+            "text": "Tool failed"
+          },
+          "metadata": {}
+        }
+      },
+      "node-2": {
+        "id": "node-2",
+        "parent": "node-1",
+        "children": [],
+        "message": {
+          "id": "node-2-msg",
+          "author": {
+            "role": "assistant"
+          },
+          "create_time": 1731000002.0,
+          "update_time": 1731000002.0,
+          "content": {
+            "content_type": "unknown_type_from_future",
+            "parts": [
+              {
+                "content_type": "future_part",
+                "asset_pointer": "future://pointer"
+              }
+            ]
+          },
+          "metadata": {}
+        }
+      }
+    }
+  }
+]

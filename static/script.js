@@ -1,10 +1,110 @@
-let conversationData = null;
+let conversationData = [];
+let selectedConvElem = null;
+const THINKING_BLOCK_TYPES = new Set(["thinking", "thoughts", "reasoning_recap"]);
+const TOOL_BLOCK_TYPES = new Set(["tool_use", "tool_result", "execution_output", "tether_browsing_display"]);
+const ATTACHMENT_BLOCK_TYPES = new Set([
+    "attachment",
+    "file",
+    "image_asset_pointer",
+    "audio_asset_pointer",
+    "real_time_user_audio_video_asset_pointer",
+]);
+const SYSTEM_BLOCK_TYPES = new Set(["system_error"]);
+
+function toConversationKey(provider, id) {
+    return `${provider}::${id}`;
+}
+
+function escapeSelector(value) {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function escapeHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatBlockType(type) {
+    return String(type || "unknown").replace(/_/g, " ");
+}
+
+function formatTextWithBreaks(value) {
+    return escapeHtml(value).replace(/\n/g, "<br/>");
+}
+
+function renderMessageBlock(block) {
+    const type = block?.type || "unknown";
+    const label = formatBlockType(type);
+    const text = block?.text || "";
+
+    if (type === "code") {
+        return `
+            <div class="msg-block msg-block-code">
+                <div class="msg-block-label">${label}</div>
+                <pre><code>${escapeHtml(text)}</code></pre>
+            </div>
+        `;
+    }
+
+    if (THINKING_BLOCK_TYPES.has(type)) {
+        return `
+            <details class="msg-block msg-block-thinking" open>
+                <summary>${label}</summary>
+                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            </details>
+        `;
+    }
+
+    if (TOOL_BLOCK_TYPES.has(type)) {
+        return `
+            <div class="msg-block msg-block-tool">
+                <div class="msg-block-label">${label}</div>
+                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            </div>
+        `;
+    }
+
+    if (ATTACHMENT_BLOCK_TYPES.has(type)) {
+        return `
+            <div class="msg-block msg-block-asset">
+                <div class="msg-block-label">${label}</div>
+                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            </div>
+        `;
+    }
+
+    if (SYSTEM_BLOCK_TYPES.has(type)) {
+        return `
+            <div class="msg-block msg-block-system">
+                <div class="msg-block-label">${label}</div>
+                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="msg-block msg-block-text">
+            <div class="msg-block-label">${label}</div>
+            <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+        </div>
+    `;
+}
+
+function renderMessageBlocks(blocks) {
+    if (!blocks || blocks.length === 0) {
+        return `<div class="msg-block msg-block-empty">[No renderable blocks]</div>`;
+    }
+    return blocks.map(block => renderMessageBlock(block)).join("");
+}
 
 async function loadConversations() {
     try {
         const response = await fetch("/api/conversations");
         conversationData = await response.json();
-        
         populateGroupDropdown(conversationData);
         populateConversationsList();
     } catch (error) {
@@ -21,7 +121,11 @@ function populateGroupDropdown(conversations) {
     });
 
     const groupFilterElem = document.getElementById("groupFilter");
+    const existingValues = new Set(Array.from(groupFilterElem.options).map(option => option.value));
     Array.from(groupSet).forEach(group => {
+        if (existingValues.has(group)) {
+            return;
+        }
         const optionElem = document.createElement("option");
         optionElem.value = group;
         optionElem.textContent = group;
@@ -29,54 +133,55 @@ function populateGroupDropdown(conversations) {
     });
 }
 
-let selectedConvElem = null;  // Global variable to track selected conversation
-
 function populateConversationsList() {
     const sidebar = document.getElementById("sidebar-conversations");
-    sidebar.innerHTML = ""; // Clear previous conversations
+    sidebar.innerHTML = "";
 
     const selectedGroup = document.getElementById("groupFilter").value;
     const searchText = document.getElementById("textFilter").value.toLowerCase();
-    
-    // Apply filters
+
     const filteredData = conversationData.filter(conv => {
-        return (!selectedGroup || (conv.group && conv.group === selectedGroup) ||
-                (selectedGroup == "*" && conv.is_favorite)) &&
-                (!searchText || (conv.title && conv.title.toLowerCase().includes(searchText)));
+        const matchesGroup = (!selectedGroup || (conv.group && conv.group === selectedGroup)) ||
+            (selectedGroup === "*" && conv.is_favorite);
+        const matchesText = !searchText ||
+            (conv.title && conv.title.toLowerCase().includes(searchText)) ||
+            (conv.provider && conv.provider.toLowerCase().includes(searchText));
+        return matchesGroup && matchesText;
     });
 
     let currentGroup = null;
-
-    filteredData.forEach((conv) => {
-        // Check if the conversation belongs to a new group
+    filteredData.forEach((conv, index) => {
         if (conv.group !== currentGroup) {
             currentGroup = conv.group;
-
-            // Add a group title to the sidebar
             sidebar.insertAdjacentHTML("beforeend", `
                 <div class="p-2 text-gray-700 font-bold">
                     ${currentGroup || "No Group"}
                 </div>
             `);
         }
-    
+
+        const safeId = escapeSelector(`${conv.provider}-${conv.id}-${index}`);
+        const rowId = `conv-${safeId}`;
+        const key = toConversationKey(conv.provider, conv.id);
+
         sidebar.insertAdjacentHTML("beforeend", `
-            <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between relative group" id="conv-${conv.id}">
-            <div class="inline-flex items-center">
-                <span class="mr-2">${conv.title}</span>
-                <small class="text-gray-500 whitespace-nowrap">${conv.total_length}</small>
-            </div> 
-                <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(' ')[1]}">${conv.created.split(' ')[0]}</small>
-        
-                <div class="absolute right-20 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick('${conv.id}')">
+            <div class="p-2 hover:bg-gray-300 cursor-pointer flex justify-between relative group" id="${rowId}">
+                <div class="inline-flex items-center gap-2 overflow-hidden">
+                    <span class="provider-badge provider-${conv.provider}">${conv.provider}</span>
+                    <span class="mr-2 truncate">${conv.title}</span>
+                    <small class="text-gray-500 whitespace-nowrap">${conv.total_length}</small>
+                </div>
+                <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(" ")[1]}">${conv.created.split(" ")[0]}</small>
+                <div class="absolute right-24 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick(event, '${conv.provider}', '${conv.id}')">
                     <span class="material-symbols-outlined heart-icon" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 24px !important;">favorite</span>
                 </div>
             </div>
         `);
-    
-        document.getElementById(`conv-${conv.id}`).addEventListener("click", function () {
-            loadChatMessages(conv.id);
 
+        const row = document.getElementById(rowId);
+        row.dataset.key = key;
+        row.addEventListener("click", function () {
+            loadChatMessages(conv.provider, conv.id);
             unSelectConversation();
             this.classList.add("bg-gray-400");
             selectedConvElem = this;
@@ -84,21 +189,32 @@ function populateConversationsList() {
     });
 }
 
-async function handleHeartClick(convId) {
+async function handleHeartClick(event, provider, convId) {
+    event.stopPropagation();
     try {
-        const response = await fetch(`/api/toggle_favorite?conv_id=${convId}`, {
-            method: "POST",
-        });
+        const response = await fetch(
+            `/api/toggle_favorite?provider=${encodeURIComponent(provider)}&conv_id=${encodeURIComponent(convId)}`,
+            { method: "POST" }
+        );
         const data = await response.json();
 
-        // Update the conversationData array
-        const conversation = conversationData.find(conv => conv.id === convId);
+        const conversation = conversationData.find(
+            conv => conv.provider === provider && conv.id === convId
+        );
         if (conversation) {
             conversation.is_favorite = data.is_favorite;
         }
-        
-        // Update the UI based on the new favorite status
-        const heartContainer = document.querySelector(`#conv-${convId} .heart-div`);
+
+        const rowKey = toConversationKey(provider, convId);
+        const row = Array.from(document.querySelectorAll("#sidebar-conversations > div"))
+            .find(elem => elem.dataset && elem.dataset.key === rowKey);
+        if (!row) {
+            return;
+        }
+        const heartContainer = row.querySelector(".heart-div");
+        if (!heartContainer) {
+            return;
+        }
         if (data.is_favorite) {
             heartContainer.classList.add("is-favorite");
         } else {
@@ -109,38 +225,42 @@ async function handleHeartClick(convId) {
     }
 }
 
-async function loadChatMessages(convId) {
+async function loadChatMessages(provider, convId) {
     try {
-        const response = await fetch(`/api/conversations/${encodeURIComponent(convId)}/messages`);
+        const response = await fetch(
+            `/api/conversations/${encodeURIComponent(provider)}/${encodeURIComponent(convId)}/messages`
+        );
         const data = await response.json();
-
         const mainContent = document.getElementById("main-content");
         mainContent.innerHTML = `
-            <div class="p-2 border-b text-right">
-                <a href="https://chat.openai.com/c/${data.conversation_id}"
-                target="_blank" rel="noopener noreferrer" class="hover:underline">Open in ChatGPT 
+            <div class="p-2 border-b text-right flex items-center justify-end gap-3">
+                <span class="provider-badge provider-${data.provider}">${data.provider}</span>
+                <a href="${data.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline">
+                    Open in ${data.provider === "claude" ? "Claude" : "ChatGPT"}
                     <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
                 </a>
             </div>
         `;
 
-        // Populate the main content with messages
-        const messages = data.messages;
         let bgColorIndex = 0;
-        messages.forEach((msg) => {
-            const bgColorClass = bgColorIndex % 2 === 0 ? '' : 'bg-gray-200';
-            mainContent.insertAdjacentHTML('beforeend', `
+        data.messages.forEach((msg) => {
+            const bgColorClass = bgColorIndex % 2 === 0 ? "" : "bg-gray-200";
+            const renderedBlocks = msg.role === "internal"
+                ? `<span class="text-gray-400">${escapeHtml(msg.text || "")}</span>`
+                : renderMessageBlocks(msg.blocks || []);
+
+            mainContent.insertAdjacentHTML("beforeend", `
                 <div class="p-2 border-b ${bgColorClass}">
-                    <small class="text-gray-500">${msg.role == "internal" ? "" : msg.created}</small>
+                    <small class="text-gray-500">${msg.role === "internal" ? "" : msg.created}</small>
                     <br/>
-                    <strong>${msg.role == "internal" ? "" : msg.role + ":"}</strong>
-                    <span class="${msg.role == "internal" ? "text-gray-400" : ""}">${msg.text}</span>
+                    <strong>${msg.role === "internal" ? "" : msg.role + ":"}</strong>
+                    <div class="${msg.role === "internal" ? "text-gray-400" : ""}">${renderedBlocks}</div>
                 </div>
             `);
             if (msg.role !== "internal") {
                 bgColorIndex++;
             }
-    });
+        });
 
         scrollToTop();
     } catch (error) {
@@ -152,7 +272,7 @@ async function loadActivityStats() {
     try {
         const response = await fetch("/api/activity");
         const data = await response.json();
-        buildActivityGraph(document.getElementById("activity-graph"), { data: data });
+        buildActivityGraph(document.getElementById("activity-graph"), { data });
         buildActivityBarChart(data);
     } catch (error) {
         console.error("Failed to load activity graph:", error);
@@ -161,17 +281,12 @@ async function loadActivityStats() {
 
 async function loadChatStatistics() {
     try {
-        const response = await fetch('/api/statistics');
+        const response = await fetch("/api/statistics");
         const data = await response.json();
-        const tableContainer = document.getElementById('chat-statistics');
+        const tableContainer = document.getElementById("chat-statistics");
+        tableContainer.innerHTML = "";
 
-        // Create table header and rows
-        let tableHTML = `
-            <table class="min-w-full bg-white">
-                <tbody>
-        `;
-
-        // Insert table rows based on fetched data
+        let tableHTML = `<table class="min-w-full bg-white"><tbody>`;
         for (const [key, value] of Object.entries(data)) {
             tableHTML += `
                 <tr>
@@ -180,54 +295,44 @@ async function loadChatStatistics() {
                 </tr>
             `;
         }
-
-        // Close table tags
-        tableHTML += `
-                </tbody>
-            </table>
-        `;
-    
+        tableHTML += `</tbody></table>`;
         tableContainer.insertAdjacentHTML("beforeend", tableHTML);
     } catch (error) {
         console.error("Error fetching chat statistics:", error);
     }
 }
 
-async function searchConversations(query) { 
-    try { 
+async function searchConversations(query) {
+    try {
         const mainContent = document.getElementById("main-content");
-        
         mainContent.innerHTML = `
             <div class="p-2 pt-8">
                 Searching...
-                <span class="material-symbols-outlined" 
-                    style="font-variation-settings: 'opsz' 48; 
-                    vertical-align: sub; font-size: 18px !important">hourglass_top</span>
+                <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">hourglass_top</span>
             </div>
         `;
 
         const response = await fetch(`/api/search?query=${query}`);
         const data = await response.json();
-
-        mainContent.innerHTML = ""; // Clear previous messages
+        mainContent.innerHTML = "";
 
         if (data.length === 0) {
-            // if msg is empty, display a message
-            mainContent.insertAdjacentHTML('beforeend', `
-                <div class="p-2 pt-8">
-                    No results found.
-                </div>
+            mainContent.insertAdjacentHTML("beforeend", `
+                <div class="p-2 pt-8">No results found.</div>
             `);
-        }
-        else{
+        } else {
             data.forEach((msg, index) => {
-                const bgColorClass = index % 2 === 0 ? '' : 'bg-gray-200';
-                mainContent.insertAdjacentHTML('beforeend', `
+                const bgColorClass = index % 2 === 0 ? "" : "bg-gray-200";
+                const providerLabel = msg.provider || "unknown";
+                mainContent.insertAdjacentHTML("beforeend", `
                     <div class="p-2 border-b pb-12 ${bgColorClass}">
-                        <div><a href="https://chat.openai.com/c/${msg.id}"
-                        target="_blank" rel="noopener noreferrer" class="hover:underline">${msg.title}
-                        <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 18px !important">open_in_new</span>
-                        </a></div>
+                        <div class="flex items-center gap-2">
+                            <span class="provider-badge provider-${providerLabel}">${providerLabel}</span>
+                            <a href="${msg.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline">
+                                ${msg.title}
+                                <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 18px !important">open_in_new</span>
+                            </a>
+                        </div>
                         <strong>${msg.role}:</strong>
                         <span>${msg.text}</span>
                         <small class="text-gray-500">${msg.created}</small>
@@ -243,48 +348,42 @@ async function searchConversations(query) {
     }
 }
 
-async function loadAICostStats() {
+async function loadTokenStats() {
     scrollToTop();
     const mainContent = document.getElementById("main-content");
-    mainContent.innerHTML = `
-        <div class="pt-10 text-center">
-            Loading...
-        </div>
-    `;
+    mainContent.innerHTML = `<div class="pt-10 text-center">Loading...</div>`;
 
-    fetch('/api/ai-cost')
-        .then(response => response.json())
-        .then(data => {
-            buildAIStatsBarChart(data);
-        })
-        .catch(error => {
-            console.error('Error fetching AI cost data:', error);
-        });
+    try {
+        const response = await fetch("/api/ai-cost");
+        const data = await response.json();
+        buildAIStatsBarChart(data);
+    } catch (error) {
+        console.error("Error fetching token stats:", error);
+    }
 }
 
-// Scroll to the top of the main content area
 function scrollToTop() {
     document.getElementById("main-content-wrapper").scrollTop = 0;
 }
 
-// Remove background color from previously selected conversation
 function unSelectConversation() {
     if (selectedConvElem) {
         selectedConvElem.classList.remove("bg-gray-400");
     }
 }
 
-// Listen for Enter key press on searchInput element
 function handleSearchInput(event) {
-    if (event.key !== "Enter")
+    if (event.key !== "Enter") {
         return;
+    }
 
     const query = encodeURIComponent(document.getElementById("search-input").value);
-    if (query)
+    if (query) {
         searchConversations(query);
+    }
 }
 
-window.addEventListener('DOMContentLoaded', (event) => {
+window.addEventListener("DOMContentLoaded", () => {
     loadConversations();
     loadActivityStats();
     loadChatStatistics();

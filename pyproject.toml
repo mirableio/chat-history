@@ -1,22 +1,22 @@
-[tool.poetry]
+[project]
 name = "chat-history"
-version = "0.1.0"
-description = ""
-authors = ["Dima Kuchin <dima@mirable.io>"]
+version = "0.2.0"
+description = "Local UI and tooling for browsing ChatGPT and Claude history exports"
 readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faiss-cpu>=1.12.0",
+    "fastapi>=0.116.1",
+    "markdown>=3.9",
+    "openai>=1.108.0",
+    "python-dotenv>=1.1.1",
+    "tiktoken>=0.11.0",
+    "uvicorn>=0.35.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-fastapi = "^0.103.1"
-uvicorn = "^0.23.2"
-markdown = "^3.4.4"
-toml = "^0.10.2"
-openai = {extras = ["datalib"], version = "^0.28.0"}
-faiss-cpu = "^1.7.4"
-tqdm = "^4.66.1"
-tiktoken = "^0.5.1"
-
+[tool.uv]
+package = false
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"

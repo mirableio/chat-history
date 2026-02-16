@@ -1,0 +1,72 @@
+[
+  {
+    "uuid": "claude-conv-1",
+    "name": "Claude tool flow",
+    "summary": "summary",
+    "created_at": "2025-12-02T21:17:10.000000Z",
+    "updated_at": "2025-12-02T21:18:10.000000Z",
+    "account": {
+      "uuid": "account-1"
+    },
+    "chat_messages": [
+      {
+        "uuid": "claude-msg-1",
+        "sender": "human",
+        "created_at": "2025-12-02T21:17:10.100000Z",
+        "updated_at": "2025-12-02T21:17:10.100000Z",
+        "text": "hello",
+        "content": [
+          {
+            "type": "text",
+            "text": "Find docs for uv"
+          }
+        ],
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "claude-msg-2",
+        "sender": "assistant",
+        "created_at": "2025-12-02T21:17:12.000000Z",
+        "updated_at": "2025-12-02T21:17:13.000000Z",
+        "text": "derived assistant text",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "Need to inspect docs first"
+          },
+          {
+            "type": "tool_use",
+            "name": "web_fetch",
+            "message": "Fetching docs",
+            "input": {
+              "url": "https://example.com"
+            }
+          },
+          {
+            "type": "tool_result",
+            "name": "web_fetch",
+            "message": "Fetch failed"
+          },
+          {
+            "type": "text",
+            "text": "I could not fetch the URL, try opening it manually."
+          }
+        ],
+        "attachments": [
+          {
+            "file_name": "notes.txt",
+            "file_size": 120,
+            "file_type": "text/plain",
+            "extracted_content": "sample notes"
+          }
+        ],
+        "files": [
+          {
+            "file_name": "draft.md"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,26 +1,73 @@
-# ChatGPT history
+# Chat History
 
-UI for navigating and organizing OpenAI's ChatGPT conversations.
-
-**Important**: This project is 100% unaffiliated with OpenAI.
+UI and local tooling for browsing and exporting ChatGPT and Claude conversation history.
 
 ## Features
 
-- See activity graph and useful statistics
-- Quickly browse and open the chats
-- Search chats (semantic and "strict")
-- List of favorite chats
-- Open conversations on the ChatGPT site
+- Unified conversation browser for ChatGPT and Claude exports
+- Provider-aware favorites and external links
+- Full-text search with optional semantic search (OpenAI embeddings + FAISS)
+- Activity and token statistics
+- Export conversations to markdown or text for downstream AI workflows
 
 ![Screenshot](static/screenshot.png)
 
+## Requirements
+
+- Python 3.11+
+- `uv`
+
 ## Setup
 
-Currently can only be installed locally. Requires Python 3.10+
+1. Copy env template:
+   - `cp .env.example .env`
+2. Set provider export paths in `.env`:
+   - `CHAT_HISTORY_CHATGPT_PATH=/absolute/path/to/chatgpt/export/folder` (or direct `conversations.json`)
+   - `CHAT_HISTORY_CLAUDE_PATH=/absolute/path/to/claude/export/folder` (or direct `conversations.json`)
+3. Install dependencies:
+   - `make install`
+4. Run server:
+   - `make run`
+5. Open [http://127.0.0.1:8080](http://127.0.0.1:8080)
 
-1. [Export ChatGPT history](https://help.openai.com/en/articles/7260999-how-do-i-export-my-chatgpt-history-and-data)
-2. Unzip the download, place `conversations.json` in the `data` folder
-3. `make install`
-4. `make run`
-5. Open http://127.0.0.1:8080 in your browser
-6. *Optional* - copy `secrets.template.toml` to `data/secrets.toml` and update OpenAI API key, then restart the server. First run will take a while to create embeddings. 10MB JSON: ~30 min, ~$0.10 cost.
+## Configuration
+
+Environment variables (`.env`):
+
+- `CHAT_HISTORY_DATA_DIR` (default: `data`)
+- `CHAT_HISTORY_CHATGPT_PATH` (optional, folder or `conversations.json`)
+- `CHAT_HISTORY_CLAUDE_PATH` (optional, folder or `conversations.json`)
+- `CHAT_HISTORY_SETTINGS_DB_PATH` (optional)
+- `OPENAI_API_KEY` (optional; enables semantic search)
+- `OPENAI_ORGANIZATION` (optional)
+- `CHAT_HISTORY_OPENAI_ENABLED` (`true` / `false`, default `false`)
+- `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`)
+
+Data layout under `CHAT_HISTORY_DATA_DIR`:
+
+```text
+DATA_DIR/
+  chatgpt/
+    embeddings.db
+  claude/
+    embeddings.db
+  settings.db
+  export/
+```
+
+## CLI
+
+Main CLI entrypoint is `manage.py`.
+
+- Inspect loaded data:
+  - `uv run python manage.py inspect`
+- Export conversations:
+  - `uv run python manage.py export --provider all --format markdown --out /tmp/chat-export`
+
+Filters:
+
+- `--provider chatgpt|claude|all`
+- `--exclude-system`
+- `--exclude-tool`
+- `--exclude-thinking`
+- `--exclude-attachments`
