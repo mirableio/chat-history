@@ -9,7 +9,7 @@ Browse and export your ChatGPT and Claude conversations locally.
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 1. **Export your chats** from [ChatGPT](https://chatgpt.com/#settings/DataControls) or
-   [Claude](https://claude.ai/settings/account) (Settings → Export data).
+   [Claude](https://claude.ai/settings/data-privacy-controls) (Settings → Export data).
    Both services send a ZIP file by email.
 
 2. **Create a folder** for your chat history, save the ZIP there,
