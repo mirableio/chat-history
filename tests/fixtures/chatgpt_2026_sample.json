@@ -144,5 +144,43 @@
         }
       }
     }
+  },
+  {
+    "id": "chatgpt-conv-3",
+    "title": "Code from metadata",
+    "create_time": 1732000000.0,
+    "update_time": 1732000010.0,
+    "current_node": "code-node",
+    "mapping": {
+      "root": {
+        "id": "root",
+        "parent": null,
+        "children": [
+          "code-node"
+        ],
+        "message": null
+      },
+      "code-node": {
+        "id": "code-node",
+        "parent": "root",
+        "children": [],
+        "message": {
+          "id": "code-msg",
+          "author": {
+            "role": "assistant"
+          },
+          "create_time": 1732000005.0,
+          "update_time": 1732000008.0,
+          "content": {
+            "content_type": "code",
+            "language": "python"
+          },
+          "metadata": {
+            "model_slug": "gpt-4-5",
+            "finished_text": "print('from metadata')"
+          }
+        }
+      }
+    }
   }
 ]

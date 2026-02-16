@@ -41,12 +41,31 @@ def _humanize_identifier(raw_value: str) -> str:
 
 
 def _lightweight_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    preserve_long_text_keys = {
+        "asset_pointer",
+        "audio_asset_pointer",
+        "video_container_asset_pointer",
+        "url",
+        "ref_id",
+        "file_name",
+        "file_type",
+        "tool_use_id",
+        "command",
+        "name",
+        "id",
+    }
     result: dict[str, Any] = {}
     for key, value in payload.items():
         if key in {"text", "thinking", "parts", "content", "thoughts"}:
             continue
-        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 200:
+        if isinstance(value, (int, float, bool)):
             result[key] = value
+            continue
+        if isinstance(value, str):
+            if key in preserve_long_text_keys:
+                result[key] = value if len(value) <= 2000 else value[:2000]
+            elif len(value) <= 200:
+                result[key] = value
     return result
 
 
@@ -72,7 +91,6 @@ def _extract_text(value: Any, depth: int = 0) -> str:
             "url",
             "snippet",
             "domain",
-            "thoughts",
         )
         ordered_keys = list(priority_keys) + [
             key for key in value.keys() if key not in priority_keys
@@ -107,38 +125,58 @@ def _parse_chatgpt_part(content_type: str, part: Any) -> list[ContentBlock]:
     return [ContentBlock(type=part_type, text=text, data=_lightweight_metadata(part))]
 
 
-def _parse_chatgpt_content(content: Any) -> list[ContentBlock]:
+def _normalize_text_for_dedupe(value: str) -> str:
+    return " ".join(value.split()).strip()
+
+
+def _parse_chatgpt_content(
+    content: Any,
+    *,
+    message_metadata: dict[str, Any] | None = None,
+) -> list[ContentBlock]:
     if not isinstance(content, dict):
         return []
 
     content_type = str(content.get("content_type", "unknown"))
     blocks: list[ContentBlock] = []
 
-    direct_text = _extract_text(content.get("text"))
-    if direct_text:
-        blocks.append(
-            ContentBlock(type=content_type, text=direct_text, data=_lightweight_metadata(content))
-        )
-
-    parts = content.get("parts")
-    if isinstance(parts, list):
-        for part in parts:
-            blocks.extend(_parse_chatgpt_part(content_type, part))
-
     if content_type == "thoughts":
         thoughts_text = _extract_text(content.get("thoughts"))
         if thoughts_text:
             blocks.append(ContentBlock(type="thoughts", text=thoughts_text))
-
-    if content_type == "reasoning_recap":
+    elif content_type == "reasoning_recap":
         recap_text = _extract_text(content.get("content"))
         if recap_text:
             blocks.append(ContentBlock(type="reasoning_recap", text=recap_text))
-
-    if content_type == "tether_browsing_display":
+    elif content_type == "tether_browsing_display":
         browsing_text = _extract_text(content.get("summary")) or _extract_text(content.get("result"))
         if browsing_text:
             blocks.append(ContentBlock(type="tether_browsing_display", text=browsing_text))
+    else:
+        direct_text = _extract_text(content.get("text"))
+        if direct_text:
+            blocks.append(
+                ContentBlock(type=content_type, text=direct_text, data=_lightweight_metadata(content))
+            )
+
+        parts = content.get("parts")
+        if isinstance(parts, list):
+            for part in parts:
+                blocks.extend(_parse_chatgpt_part(content_type, part))
+
+    if content_type == "code" and not blocks:
+        metadata = message_metadata or {}
+        code_text = _extract_text(metadata.get("finished_text")) or _extract_text(
+            metadata.get("initial_text")
+        )
+        if code_text:
+            blocks.append(
+                ContentBlock(
+                    type="code",
+                    text=code_text,
+                    data=_lightweight_metadata({**metadata, **content}),
+                )
+            )
 
     if not blocks:
         fallback_text = _extract_text(content)
@@ -153,7 +191,7 @@ def _parse_chatgpt_content(content: Any) -> list[ContentBlock]:
     deduplicated: list[ContentBlock] = []
     seen: set[tuple[str, str]] = set()
     for block in blocks:
-        key = (block.type, block.text)
+        key = (block.type, _normalize_text_for_dedupe(block.text))
         if key in seen:
             continue
         seen.add(key)
@@ -230,7 +268,10 @@ def parse_chatgpt_export(path: Path) -> list[ConversationRecord]:
             metadata = raw_message.get("metadata") or {}
             model = metadata.get("model_slug") or default_model
 
-            content_blocks = _parse_chatgpt_content(raw_message.get("content"))
+            content_blocks = _parse_chatgpt_content(
+                raw_message.get("content"),
+                message_metadata=metadata if isinstance(metadata, dict) else None,
+            )
             if not content_blocks:
                 continue
 
@@ -416,4 +457,3 @@ def load_provider_conversations(
 
     conversations.sort(key=lambda conversation: conversation.created, reverse=True)
     return conversations
-

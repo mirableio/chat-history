@@ -30,6 +30,12 @@ class ParserTests(unittest.TestCase):
         all_text = "\n".join(message.text() for message in target.messages)
         self.assertTrue(all_text.strip())
 
+    def test_chatgpt_code_falls_back_to_metadata_text(self) -> None:
+        conversations = parse_chatgpt_export(FIXTURES_DIR / "chatgpt_2026_sample.json")
+        target = next(conversation for conversation in conversations if conversation.id == "chatgpt-conv-3")
+        self.assertEqual(len(target.messages), 1)
+        self.assertIn("from metadata", target.messages[0].text())
+
     def test_claude_block_list_and_attachment_blocks(self) -> None:
         conversations = parse_claude_export(FIXTURES_DIR / "claude_2026_sample.json")
         self.assertEqual(len(conversations), 1)

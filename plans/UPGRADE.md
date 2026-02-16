@@ -68,7 +68,7 @@ Exit criteria:
 5. Retire Poetry artifacts (`poetry.lock`, Poetry instructions).
 6. Upgrade dependencies to latest stable, including:
    - OpenAI SDK to 1.x API style,
-   - keep `pydantic.v1` compatibility shim temporarily until parser rewrite in Phase 3.
+   - ensure parser stack remains dataclass-based (no Pydantic migration track).
 
 Exit criteria:
 - Fresh environment boots with `uv sync` + `uv run ...`.
@@ -129,7 +129,7 @@ Exit criteria:
 4. Model message content as `List[ContentBlock]` (not single-block assumptions).
 5. Normalize timestamps at parse time to internal UTC `datetime` objects:
    - parse ChatGPT Unix float timestamps and Claude ISO8601 timestamps into one consistent type.
-6. Migrate parser models to native Pydantic v2 here (remove shim usage).
+6. Use lightweight dataclass-based parser/domain models (no Pydantic requirement).
 7. Remove assumptions tied to legacy ChatGPT-only schema.
 8. Keep current API response contract stable for frontend compatibility.
 

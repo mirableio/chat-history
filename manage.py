@@ -34,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output directory (default: CHAT_HISTORY_DATA_DIR/export)",
     )
+    export_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Remove existing exported files before writing new output (provider-scoped when --provider is set)",
+    )
     export_parser.add_argument("--exclude-system", action="store_true")
     export_parser.add_argument("--exclude-tool", action="store_true")
     export_parser.add_argument("--exclude-thinking", action="store_true")
@@ -53,6 +58,19 @@ def build_parser() -> argparse.ArgumentParser:
 def run_export(service: ChatHistoryService, args: argparse.Namespace) -> int:
     output_dir = args.out or service.settings.export_dir
     provider_filter = args.provider
+
+    if args.clean:
+        removed_count = 0
+        if output_dir.exists():
+            for path in output_dir.iterdir():
+                if not path.is_file():
+                    continue
+                if path.suffix not in {".md", ".txt"}:
+                    continue
+                if provider_filter == "all" or path.name.startswith(f"{provider_filter}--"):
+                    path.unlink()
+                    removed_count += 1
+        print(f"Removed {removed_count} existing export files from {output_dir}")
 
     conversations = service.conversations
     if provider_filter != "all":

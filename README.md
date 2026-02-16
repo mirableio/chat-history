@@ -63,6 +63,7 @@ Main CLI entrypoint is `manage.py`.
   - `uv run python manage.py inspect`
 - Export conversations:
   - `uv run python manage.py export --provider all --format markdown --out /tmp/chat-export`
+  - Add `--clean` to remove old export files before writing new ones.
 
 Filters:
 
@@ -71,3 +72,9 @@ Filters:
 - `--exclude-tool`
 - `--exclude-thinking`
 - `--exclude-attachments`
+- `--clean`
+
+## Notes
+
+- Export is non-destructive by default. Existing files remain unless `--clean` is used.
+- Token stats for Claude are approximate (fallback tokenizer), not exact Claude-native counts.

@@ -8,6 +8,7 @@ dependencies = [
     "faiss-cpu>=1.12.0",
     "fastapi>=0.116.1",
     "markdown>=3.9",
+    "numpy>=2.0.0",
     "openai>=1.108.0",
     "python-dotenv>=1.1.1",
     "tiktoken>=0.11.0",
