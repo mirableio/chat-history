@@ -10,6 +10,11 @@ const ATTACHMENT_BLOCK_TYPES = new Set([
     "real_time_user_audio_video_asset_pointer",
 ]);
 const SYSTEM_BLOCK_TYPES = new Set(["system_error"]);
+const statisticsState = {
+    payload: null,
+    viewMode: "unified",
+    selectedProviders: [],
+};
 
 function toConversationKey(provider, id) {
     return `${provider}::${id}`;
@@ -272,31 +277,121 @@ async function loadActivityStats() {
     try {
         const response = await fetch("/api/activity");
         const data = await response.json();
-        buildActivityGraph(document.getElementById("activity-graph"), { data });
-        buildActivityBarChart(data);
+        if (typeof window.setActivityPayload === "function") {
+            window.setActivityPayload(data);
+        } else {
+            buildActivityGraph(document.getElementById("activity-graph"), { data });
+            buildActivityBarChart(data);
+        }
     } catch (error) {
         console.error("Failed to load activity graph:", error);
     }
+}
+
+function normalizeStatisticsPayload(rawPayload) {
+    if (rawPayload && typeof rawPayload === "object" && rawPayload.summary) {
+        return {
+            summary: rawPayload.summary || {},
+            by_provider: rawPayload.by_provider || {},
+        };
+    }
+    return {
+        summary: rawPayload || {},
+        by_provider: {},
+    };
+}
+
+function statisticsRowsHtml(stats) {
+    let rows = "";
+    for (const [key, value] of Object.entries(stats || {})) {
+        rows += `
+            <tr>
+                <td class="py-2 px-3 border-b border-gray-200">${escapeHtml(key)}</td>
+                <td class="py-2 px-3 border-b border-gray-200 text-right">${escapeHtml(value)}</td>
+            </tr>
+        `;
+    }
+    return rows;
+}
+
+function renderStatisticsTable(container, titleHtml, stats) {
+    container.insertAdjacentHTML("beforeend", `
+        <div class="stats-table-card">
+            <div class="stats-table-title">${titleHtml}</div>
+            <table class="min-w-full bg-white">
+                <tbody>${statisticsRowsHtml(stats)}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+function selectedStatisticsProviders() {
+    const byProvider = statisticsState.payload?.by_provider || {};
+    const availableProviders = Object.keys(byProvider).sort();
+    if (statisticsState.selectedProviders.length === 0) {
+        return availableProviders;
+    }
+    const selected = new Set(statisticsState.selectedProviders);
+    return availableProviders.filter((provider) => selected.has(provider));
+}
+
+function renderChatStatistics() {
+    const tableContainer = document.getElementById("chat-statistics");
+    tableContainer.innerHTML = "";
+
+    if (!statisticsState.payload) {
+        return;
+    }
+
+    const byProvider = statisticsState.payload.by_provider || {};
+    const summary = statisticsState.payload.summary || {};
+    const shouldSplitByProvider =
+        statisticsState.viewMode === "provider" && Object.keys(byProvider).length > 0;
+
+    if (!shouldSplitByProvider) {
+        renderStatisticsTable(tableContainer, "All providers", summary);
+        return;
+    }
+
+    const providers = selectedStatisticsProviders();
+    if (providers.length === 0) {
+        tableContainer.insertAdjacentHTML(
+            "beforeend",
+            `<div class="activity-empty-state">No provider selected.</div>`
+        );
+        return;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "stats-tables-grid";
+    tableContainer.appendChild(grid);
+
+    providers.forEach((provider) => {
+        renderStatisticsTable(
+            grid,
+            `<span class="provider-badge provider-${provider}">${escapeHtml(provider)}</span>`,
+            byProvider[provider] || {}
+        );
+    });
+}
+
+function applyActivitySettingsToStatistics(settings) {
+    if (!settings || typeof settings !== "object") {
+        return;
+    }
+    statisticsState.viewMode = settings.viewMode === "provider" ? "provider" : "unified";
+    statisticsState.selectedProviders = Array.isArray(settings.selectedProviders)
+        ? settings.selectedProviders
+        : [];
+    renderChatStatistics();
 }
 
 async function loadChatStatistics() {
     try {
         const response = await fetch("/api/statistics");
         const data = await response.json();
-        const tableContainer = document.getElementById("chat-statistics");
-        tableContainer.innerHTML = "";
-
-        let tableHTML = `<table class="min-w-full bg-white"><tbody>`;
-        for (const [key, value] of Object.entries(data)) {
-            tableHTML += `
-                <tr>
-                    <td class="py-2 px-4 border-b">${key}</td>
-                    <td class="py-2 px-4 border-b">${value}</td>
-                </tr>
-            `;
-        }
-        tableHTML += `</tbody></table>`;
-        tableContainer.insertAdjacentHTML("beforeend", tableHTML);
+        statisticsState.payload = normalizeStatisticsPayload(data);
+        renderChatStatistics();
     } catch (error) {
         console.error("Error fetching chat statistics:", error);
     }
@@ -384,6 +479,10 @@ function handleSearchInput(event) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+    window.addEventListener("activity-settings-changed", (event) => {
+        applyActivitySettingsToStatistics(event.detail || {});
+    });
+
     loadConversations();
     loadActivityStats();
     loadChatStatistics();

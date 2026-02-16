@@ -180,64 +180,80 @@ class ChatHistoryService:
             "messages": payload_messages,
         }
 
-    def get_activity(self) -> dict[str, int]:
-        activity = defaultdict(int)
+    def get_activity(self) -> dict[str, Any]:
+        activity_by_day: dict[str, dict[str, Any]] = {}
+        provider_totals = defaultdict(int)
+
         for conversation in self.conversations:
+            provider = conversation.provider
             for message in conversation.messages:
-                activity[str(message.created.date())] += 1
-        return dict(sorted(activity.items()))
+                day = str(message.created.date())
+                day_entry = activity_by_day.setdefault(day, {"total": 0, "providers": {}})
+                day_entry["total"] += 1
+                day_entry["providers"][provider] = day_entry["providers"].get(provider, 0) + 1
+                provider_totals[provider] += 1
 
-    def get_statistics(self) -> dict[str, str]:
-        if not self.conversations:
-            return {
-                "Conversations": "0",
-                "Messages": "0",
-                "Providers": "N/A",
-            }
-
-        lengths = sorted(
-            [conversation.total_length_seconds for conversation in self.conversations], reverse=True
-        )
-        first_message = min(
-            (message.created for conversation in self.conversations for message in conversation.messages),
-            default=datetime.now(timezone.utc),
-        )
-        last_message = max(
-            (message.created for conversation in self.conversations for message in conversation.messages),
-            default=datetime.now(timezone.utc),
-        )
-
-        provider_counts = defaultdict(int)
-        message_count = 0
-        for conversation in self.conversations:
-            provider_counts[conversation.provider] += 1
-            message_count += len(conversation.messages)
-
-        top_conversations = sorted(
-            self.conversations, key=lambda conversation: conversation.total_length_seconds, reverse=True
-        )[:3]
-        top_links = "".join(
-            [
-                f"<a href='{conversation.open_url}' target='_blank'>{conversation.provider.title()} Chat {index + 1}</a><br/>"
-                for index, conversation in enumerate(top_conversations)
-            ]
-        )
+        sorted_days = {day: activity_by_day[day] for day in sorted(activity_by_day.keys())}
+        providers = sorted(provider_totals.keys())
 
         return {
-            "Conversations": str(len(self.conversations)),
+            "providers": providers,
+            "provider_totals": {provider: provider_totals[provider] for provider in providers},
+            "days": sorted_days,
+        }
+
+    @staticmethod
+    def _format_stats_for_conversations(
+        conversations: list[ConversationRecord],
+    ) -> dict[str, str]:
+        message_timestamps = [
+            message.created
+            for conversation in conversations
+            for message in conversation.messages
+        ]
+        message_count = len(message_timestamps)
+
+        stats = {
+            "Conversations": str(len(conversations)),
             "Messages": str(message_count),
-            "Providers": ", ".join(
-                f"{provider}: {count}" for provider, count in sorted(provider_counts.items())
-            ),
-            "Chat backup age": human_readable_time(
-                (datetime.now(timezone.utc) - last_message).total_seconds()
-            ),
-            "Last chat message": last_message.astimezone().strftime("%Y-%m-%d"),
-            "First chat message": first_message.astimezone().strftime("%Y-%m-%d"),
-            "Shortest conversation": human_readable_time(min(lengths)),
-            "Longest conversation": human_readable_time(max(lengths)),
-            "Average chat length": human_readable_time(sum(lengths) / len(lengths)),
-            "Top longest chats": top_links,
+            "Chat backup age": "N/A",
+            "Last chat message": "N/A",
+            "First chat message": "N/A",
+        }
+        if not message_timestamps:
+            return stats
+
+        first_message = min(message_timestamps)
+        last_message = max(message_timestamps)
+        stats["Chat backup age"] = human_readable_time(
+            (datetime.now(timezone.utc) - last_message).total_seconds()
+        )
+        stats["Last chat message"] = last_message.astimezone().strftime("%Y-%m-%d")
+        stats["First chat message"] = first_message.astimezone().strftime("%Y-%m-%d")
+        return stats
+
+    def get_statistics(self) -> dict[str, Any]:
+        provider_groups: dict[str, list[ConversationRecord]] = defaultdict(list)
+        for conversation in self.conversations:
+            provider_groups[conversation.provider].append(conversation)
+
+        summary = self._format_stats_for_conversations(self.conversations)
+        summary["Providers"] = (
+            ", ".join(
+                f"{provider}: {len(provider_groups[provider])}"
+                for provider in sorted(provider_groups.keys())
+            )
+            if provider_groups
+            else "N/A"
+        )
+
+        by_provider = {
+            provider: self._format_stats_for_conversations(conversations)
+            for provider, conversations in sorted(provider_groups.items())
+        }
+        return {
+            "summary": summary,
+            "by_provider": by_provider,
         }
 
     def get_token_statistics(self) -> list[dict[str, Any]]:
