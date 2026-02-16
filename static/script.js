@@ -15,9 +15,74 @@ const statisticsState = {
     viewMode: "unified",
     selectedProviders: [],
 };
+const MESSAGE_RENDER_MODE_MARKDOWN = "markdown";
+const MESSAGE_RENDER_MODE_PLAIN = "plain";
+const messageRenderState = {
+    mode: MESSAGE_RENDER_MODE_MARKDOWN,
+    currentConversation: null,
+};
+const activityDayFilterState = {
+    date: null,
+    provider: null,
+    loading: false,
+    matchedKeys: null,
+};
 
 function toConversationKey(provider, id) {
     return `${provider}::${id}`;
+}
+
+function hasActivityDayFilter() {
+    return Boolean(activityDayFilterState.date);
+}
+
+function parseConversationFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const provider = params.get("provider");
+    const convId = params.get("conv_id");
+    if (!provider || !convId) {
+        return null;
+    }
+    return { provider, convId };
+}
+
+function setConversationPreloadMode(active) {
+    document.documentElement.classList.toggle("conversation-preload", Boolean(active));
+}
+
+function buildInternalConversationUrl(provider, convId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("provider", provider);
+    url.searchParams.set("conv_id", convId);
+    return `${url.pathname}?${url.searchParams.toString()}`;
+}
+
+function updateConversationUrl(provider, convId, { replace = false } = {}) {
+    const nextUrl = buildInternalConversationUrl(provider, convId);
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (nextUrl === currentUrl) {
+        return;
+    }
+    if (replace) {
+        window.history.replaceState({ provider, conv_id: convId }, "", nextUrl);
+    } else {
+        window.history.pushState({ provider, conv_id: convId }, "", nextUrl);
+    }
+}
+
+function selectConversationRow(provider, convId) {
+    const rowKey = toConversationKey(provider, convId);
+    const row = Array.from(document.querySelectorAll("#sidebar-conversations > div"))
+        .find(elem => elem.dataset && elem.dataset.key === rowKey);
+
+    unSelectConversation();
+    selectedConvElem = null;
+    if (!row) {
+        return;
+    }
+
+    row.classList.add("bg-gray-400");
+    selectedConvElem = row;
 }
 
 function escapeSelector(value) {
@@ -41,34 +106,127 @@ function formatTextWithBreaks(value) {
     return escapeHtml(value).replace(/\n/g, "<br/>");
 }
 
+function normalizeRenderMode(mode) {
+    return mode === MESSAGE_RENDER_MODE_PLAIN
+        ? MESSAGE_RENDER_MODE_PLAIN
+        : MESSAGE_RENDER_MODE_MARKDOWN;
+}
+
+function getRenderMode() {
+    return normalizeRenderMode(messageRenderState.mode);
+}
+
+function renderMarkdown(value) {
+    const text = String(value || "");
+    const marked = window.marked;
+    if (!marked || typeof marked.parse !== "function") {
+        return formatTextWithBreaks(text);
+    }
+    try {
+        const rendered = marked.parse(text);
+        const template = document.createElement("template");
+        template.innerHTML = rendered;
+        template.content.querySelectorAll("a[href]").forEach((link) => {
+            link.setAttribute("target", "_blank");
+            link.setAttribute("rel", "noopener noreferrer");
+        });
+        return template.innerHTML;
+    } catch (error) {
+        console.error("Failed to parse markdown, using plain text:", error);
+        return formatTextWithBreaks(text);
+    }
+}
+
+function renderBlockBody(value, { markdown = false } = {}) {
+    if (markdown && getRenderMode() === MESSAGE_RENDER_MODE_MARKDOWN) {
+        return renderMarkdown(value);
+    }
+    return formatTextWithBreaks(value);
+}
+
+function firstLinePreview(value, maxLength = 140) {
+    const firstLine = String(value || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) || "";
+    if (!firstLine) {
+        return "";
+    }
+    if (firstLine.length <= maxLength) {
+        return firstLine;
+    }
+    return `${firstLine.slice(0, maxLength - 1)}…`;
+}
+
+function renderCollapsibleBlock(className, label, text, summaryClassName, options = {}) {
+    const preview = firstLinePreview(text);
+    const previewHtml = preview
+        ? `<span class="msg-block-summary-preview">${escapeHtml(preview)}</span>`
+        : "";
+
+    return `
+        <details class="msg-block ${className}">
+            <summary class="msg-block-summary ${summaryClassName}">
+                <span class="msg-block-summary-label">${label}</span>
+                ${previewHtml}
+            </summary>
+            <div class="msg-block-body">${renderBlockBody(text, options)}</div>
+        </details>
+    `;
+}
+
+function renderCollapsibleCodeBlock(label, text) {
+    const preview = firstLinePreview(text);
+    const previewHtml = preview
+        ? `<span class="msg-block-summary-preview">${escapeHtml(preview)}</span>`
+        : "";
+
+    return `
+        <details class="msg-block msg-block-code">
+            <summary class="msg-block-summary msg-block-code-summary">
+                <span class="msg-block-summary-label">${label}</span>
+                ${previewHtml}
+            </summary>
+            <div class="msg-block-body">
+                <pre><code>${escapeHtml(text)}</code></pre>
+            </div>
+        </details>
+    `;
+}
+
 function renderMessageBlock(block) {
     const type = block?.type || "unknown";
     const label = formatBlockType(type);
     const text = block?.text || "";
 
     if (type === "code") {
-        return `
-            <div class="msg-block msg-block-code">
-                <div class="msg-block-label">${label}</div>
-                <pre><code>${escapeHtml(text)}</code></pre>
-            </div>
-        `;
+        return renderCollapsibleCodeBlock(label, text);
     }
 
     if (THINKING_BLOCK_TYPES.has(type)) {
-        return `
-            <details class="msg-block msg-block-thinking" open>
-                <summary>${label}</summary>
-                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
-            </details>
-        `;
+        return renderCollapsibleBlock(
+            "msg-block-thinking",
+            label,
+            text,
+            "msg-block-thinking-summary",
+            { markdown: true }
+        );
     }
 
     if (TOOL_BLOCK_TYPES.has(type)) {
+        return renderCollapsibleBlock(
+            "msg-block-tool",
+            label,
+            text,
+            "msg-block-tool-summary",
+            { markdown: type === "tool_result" }
+        );
+    }
+
+    if (type === "text") {
         return `
-            <div class="msg-block msg-block-tool">
-                <div class="msg-block-label">${label}</div>
-                <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            <div class="msg-block msg-block-text">
+                <div class="msg-block-body">${renderBlockBody(text, { markdown: true })}</div>
             </div>
         `;
     }
@@ -94,7 +252,7 @@ function renderMessageBlock(block) {
     return `
         <div class="msg-block msg-block-text">
             <div class="msg-block-label">${label}</div>
-            <div class="msg-block-body">${formatTextWithBreaks(text)}</div>
+            <div class="msg-block-body">${renderBlockBody(text)}</div>
         </div>
     `;
 }
@@ -141,18 +299,31 @@ function populateGroupDropdown(conversations) {
 function populateConversationsList() {
     const sidebar = document.getElementById("sidebar-conversations");
     sidebar.innerHTML = "";
+    selectedConvElem = null;
 
     const selectedGroup = document.getElementById("groupFilter").value;
     const searchText = document.getElementById("textFilter").value.toLowerCase();
+    const hasDayFilter = hasActivityDayFilter();
+    const matchedKeys = activityDayFilterState.matchedKeys || new Set();
 
     const filteredData = conversationData.filter(conv => {
-        const matchesGroup = (!selectedGroup || (conv.group && conv.group === selectedGroup)) ||
+        const conversationKey = toConversationKey(conv.provider, conv.id);
+        const matchesActivityDay = !hasDayFilter || matchedKeys.has(conversationKey);
+        const matchesGroup = hasDayFilter || (!selectedGroup || (conv.group && conv.group === selectedGroup)) ||
             (selectedGroup === "*" && conv.is_favorite);
         const matchesText = !searchText ||
             (conv.title && conv.title.toLowerCase().includes(searchText)) ||
             (conv.provider && conv.provider.toLowerCase().includes(searchText));
-        return matchesGroup && matchesText;
+        return matchesActivityDay && matchesGroup && matchesText;
     });
+
+    if (filteredData.length === 0 && hasDayFilter) {
+        sidebar.insertAdjacentHTML("beforeend", `
+            <div class="p-2 text-gray-500">
+                ${activityDayFilterState.loading ? "Filtering by day..." : "No conversations for selected day."}
+            </div>
+        `);
+    }
 
     let currentGroup = null;
     filteredData.forEach((conv, index) => {
@@ -174,7 +345,6 @@ function populateConversationsList() {
                 <div class="inline-flex items-center gap-2 overflow-hidden">
                     <span class="provider-badge provider-${conv.provider}">${conv.provider}</span>
                     <span class="mr-2 truncate">${conv.title}</span>
-                    <small class="text-gray-500 whitespace-nowrap">${conv.total_length}</small>
                 </div>
                 <small class="text-gray-500 whitespace-nowrap" title="${conv.created.split(" ")[1]}">${conv.created.split(" ")[0]}</small>
                 <div class="absolute right-24 top-0 pt-1 pr-1 group-hover:opacity-100 cursor-pointer heart-div ${conv.is_favorite ? "is-favorite" : ""}" onclick="handleHeartClick(event, '${conv.provider}', '${conv.id}')">
@@ -186,12 +356,132 @@ function populateConversationsList() {
         const row = document.getElementById(rowId);
         row.dataset.key = key;
         row.addEventListener("click", function () {
-            loadChatMessages(conv.provider, conv.id);
-            unSelectConversation();
-            this.classList.add("bg-gray-400");
-            selectedConvElem = this;
+            openConversation(conv.provider, conv.id);
         });
     });
+
+    const currentSelection = parseConversationFromUrl();
+    if (currentSelection) {
+        selectConversationRow(currentSelection.provider, currentSelection.convId);
+    }
+}
+
+function renderActivityDayFilterControl() {
+    const groupFilter = document.getElementById("groupFilter");
+    const container = document.getElementById("activity-day-filter");
+    if (!groupFilter || !container) {
+        return;
+    }
+
+    if (!hasActivityDayFilter()) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+        groupFilter.classList.remove("hidden");
+        return;
+    }
+
+    const provider = activityDayFilterState.provider;
+    const providerBadge = provider
+        ? `<span class="provider-badge provider-${escapeSelector(provider)}">${escapeHtml(provider)}</span>`
+        : "";
+    const loadingClass = activityDayFilterState.loading ? "is-loading" : "";
+    const clearButton = activityDayFilterState.loading
+        ? ""
+        : `<button class="activity-day-filter-clear" id="activity-day-filter-clear" type="button">✕</button>`;
+
+    groupFilter.classList.add("hidden");
+    container.classList.remove("hidden");
+    container.innerHTML = `
+        <div class="activity-day-filter-chip ${loadingClass}">
+            <div class="activity-day-filter-main">
+                <span class="activity-day-filter-label">
+                    ${activityDayFilterState.loading ? "Filtering..." : `Day: ${escapeHtml(activityDayFilterState.date)}`}
+                </span>
+                ${providerBadge}
+            </div>
+            ${clearButton}
+        </div>
+    `;
+
+    const clearButtonElement = document.getElementById("activity-day-filter-clear");
+    if (clearButtonElement) {
+        clearButtonElement.addEventListener("click", () => {
+            clearActivityDayFilter();
+        });
+    }
+}
+
+function clearActivityDayFilter() {
+    activityDayFilterState.date = null;
+    activityDayFilterState.provider = null;
+    activityDayFilterState.loading = false;
+    activityDayFilterState.matchedKeys = null;
+    renderActivityDayFilterControl();
+    populateConversationsList();
+}
+
+async function applyActivityDayFilter(date, provider = null) {
+    const normalizedProvider = provider || null;
+    if (!date) {
+        clearActivityDayFilter();
+        return;
+    }
+    if (
+        activityDayFilterState.date === date &&
+        activityDayFilterState.provider === normalizedProvider &&
+        !activityDayFilterState.loading
+    ) {
+        return;
+    }
+
+    activityDayFilterState.date = date;
+    activityDayFilterState.provider = normalizedProvider;
+    activityDayFilterState.loading = true;
+    activityDayFilterState.matchedKeys = new Set();
+    renderActivityDayFilterControl();
+    populateConversationsList();
+
+    try {
+        const queryParams = new URLSearchParams({ date });
+        if (normalizedProvider) {
+            queryParams.set("provider", normalizedProvider);
+        }
+        const response = await fetch(`/api/activity/day?${queryParams.toString()}`);
+        if (!response.ok) {
+            throw new Error(`Activity day request failed: ${response.status}`);
+        }
+        const payload = await response.json();
+
+        if (
+            activityDayFilterState.date !== date ||
+            activityDayFilterState.provider !== normalizedProvider
+        ) {
+            return;
+        }
+
+        const matches = new Set(
+            (payload.conversations || []).map((item) => toConversationKey(item.provider, item.id))
+        );
+        activityDayFilterState.matchedKeys = matches;
+    } catch (error) {
+        console.error("Failed to filter conversations by day:", error);
+        if (
+            activityDayFilterState.date !== date ||
+            activityDayFilterState.provider !== normalizedProvider
+        ) {
+            return;
+        }
+        activityDayFilterState.matchedKeys = new Set();
+    } finally {
+        if (
+            activityDayFilterState.date === date &&
+            activityDayFilterState.provider === normalizedProvider
+        ) {
+            activityDayFilterState.loading = false;
+            renderActivityDayFilterControl();
+            populateConversationsList();
+        }
+    }
 }
 
 async function handleHeartClick(event, provider, convId) {
@@ -230,46 +520,129 @@ async function handleHeartClick(event, provider, convId) {
     }
 }
 
-async function loadChatMessages(provider, convId) {
-    try {
-        const response = await fetch(
-            `/api/conversations/${encodeURIComponent(provider)}/${encodeURIComponent(convId)}/messages`
-        );
-        const data = await response.json();
-        const mainContent = document.getElementById("main-content");
-        mainContent.innerHTML = `
-            <div class="p-2 border-b text-right flex items-center justify-end gap-3">
+async function openConversation(provider, convId, options = {}) {
+    const updateUrl = options.updateUrl !== false;
+    const replaceUrl = options.replaceUrl === true;
+
+    const loaded = await loadChatMessages(provider, convId);
+    if (!loaded) {
+        return false;
+    }
+
+    selectConversationRow(provider, convId);
+    if (updateUrl) {
+        updateConversationUrl(provider, convId, { replace: replaceUrl });
+    }
+    return true;
+}
+
+async function openConversationFromUrl(options = {}) {
+    const selection = parseConversationFromUrl();
+    if (!selection) {
+        return false;
+    }
+    return openConversation(selection.provider, selection.convId, {
+        updateUrl: false,
+        replaceUrl: options.replaceUrl === true,
+    });
+}
+
+function renderModeToggleHtml() {
+    const currentMode = getRenderMode();
+    const markdownActive = currentMode === MESSAGE_RENDER_MODE_MARKDOWN ? "is-active is-markdown" : "";
+    const plainActive = currentMode === MESSAGE_RENDER_MODE_PLAIN ? "is-active is-plain" : "";
+    return `
+        <div class="render-mode-toggle" id="render-mode-toggle">
+            <button class="render-mode-btn ${markdownActive}" data-render-mode="${MESSAGE_RENDER_MODE_MARKDOWN}" type="button">
+                Markdown
+            </button>
+            <button class="render-mode-btn ${plainActive}" data-render-mode="${MESSAGE_RENDER_MODE_PLAIN}" type="button">
+                Plain text
+            </button>
+        </div>
+    `;
+}
+
+function renderConversationMessages(data, { preserveScroll = false } = {}) {
+    const wrapper = document.getElementById("main-content-wrapper");
+    const previousScroll = preserveScroll && wrapper ? wrapper.scrollTop : 0;
+    const mainContent = document.getElementById("main-content");
+
+    mainContent.innerHTML = `
+        <div class="p-2 border-b flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-3 min-w-0">
                 <span class="provider-badge provider-${data.provider}">${data.provider}</span>
                 <a href="${data.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline">
                     Open in ${data.provider === "claude" ? "Claude" : "ChatGPT"}
                     <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
                 </a>
             </div>
-        `;
+            ${renderModeToggleHtml()}
+        </div>
+    `;
 
-        let bgColorIndex = 0;
-        data.messages.forEach((msg) => {
-            const bgColorClass = bgColorIndex % 2 === 0 ? "" : "bg-gray-200";
-            const renderedBlocks = msg.role === "internal"
-                ? `<span class="text-gray-400">${escapeHtml(msg.text || "")}</span>`
-                : renderMessageBlocks(msg.blocks || []);
+    let bgColorIndex = 0;
+    data.messages.forEach((msg) => {
+        const bgColorClass = bgColorIndex % 2 === 0 ? "" : "bg-gray-200";
+        const renderedBlocks = msg.role === "internal"
+            ? `<span class="text-gray-400">${escapeHtml(msg.text || "")}</span>`
+            : renderMessageBlocks(msg.blocks || []);
 
-            mainContent.insertAdjacentHTML("beforeend", `
-                <div class="p-2 border-b ${bgColorClass}">
-                    <small class="text-gray-500">${msg.role === "internal" ? "" : msg.created}</small>
-                    <br/>
-                    <strong>${msg.role === "internal" ? "" : msg.role + ":"}</strong>
-                    <div class="${msg.role === "internal" ? "text-gray-400" : ""}">${renderedBlocks}</div>
-                </div>
-            `);
-            if (msg.role !== "internal") {
-                bgColorIndex++;
-            }
+        mainContent.insertAdjacentHTML("beforeend", `
+            <div class="p-2 border-b ${bgColorClass}">
+                <small class="text-gray-500">${msg.role === "internal" ? "" : msg.created}</small>
+                <br/>
+                <strong>${msg.role === "internal" ? "" : msg.role + ":"}</strong>
+                <div class="${msg.role === "internal" ? "text-gray-400" : ""}">${renderedBlocks}</div>
+            </div>
+        `);
+        if (msg.role !== "internal") {
+            bgColorIndex++;
+        }
+    });
+
+    const toggle = document.getElementById("render-mode-toggle");
+    if (toggle) {
+        toggle.querySelectorAll("button[data-render-mode]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const nextMode = normalizeRenderMode(button.dataset.renderMode);
+                if (nextMode === getRenderMode()) {
+                    return;
+                }
+                setRenderMode(nextMode, { rerender: true });
+            });
         });
+    }
 
+    if (preserveScroll && wrapper) {
+        wrapper.scrollTop = previousScroll;
+    }
+}
+
+function setRenderMode(mode, { rerender = false } = {}) {
+    messageRenderState.mode = normalizeRenderMode(mode);
+
+    if (rerender && messageRenderState.currentConversation) {
+        renderConversationMessages(messageRenderState.currentConversation, { preserveScroll: true });
+    }
+}
+
+async function loadChatMessages(provider, convId) {
+    try {
+        const response = await fetch(
+            `/api/conversations/${encodeURIComponent(provider)}/${encodeURIComponent(convId)}/messages`
+        );
+        if (!response.ok) {
+            return false;
+        }
+        const data = await response.json();
+        messageRenderState.currentConversation = data;
+        renderConversationMessages(data);
         scrollToTop();
+        return true;
     } catch (error) {
         console.error("Failed to load messages:", error);
+        return false;
     }
 }
 
@@ -419,12 +792,28 @@ async function searchConversations(query) {
             data.forEach((msg, index) => {
                 const bgColorClass = index % 2 === 0 ? "" : "bg-gray-200";
                 const providerLabel = msg.provider || "unknown";
+                const canOpenInternally = Boolean(msg.provider && msg.id);
+                const titleHtml = escapeHtml(msg.title || "Untitled");
+                const internalUrl = msg.internal_url || buildInternalConversationUrl(msg.provider, msg.id);
+                const internalLinkHtml = canOpenInternally
+                    ? `
+                        <a
+                            href="${internalUrl}"
+                            class="hover:underline search-open-internal"
+                            data-provider="${escapeHtml(msg.provider || "")}"
+                            data-conv-id="${escapeHtml(msg.id || "")}"
+                        >
+                            ${titleHtml}
+                        </a>
+                    `
+                    : `<span>${titleHtml}</span>`;
                 mainContent.insertAdjacentHTML("beforeend", `
                     <div class="p-2 border-b pb-12 ${bgColorClass}">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <span class="provider-badge provider-${providerLabel}">${providerLabel}</span>
-                            <a href="${msg.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline">
-                                ${msg.title}
+                            ${internalLinkHtml}
+                            <a href="${msg.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline text-gray-500">
+                                external
                                 <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: middle; font-size: 18px !important">open_in_new</span>
                             </a>
                         </div>
@@ -433,6 +822,18 @@ async function searchConversations(query) {
                         <small class="text-gray-500">${msg.created}</small>
                     </div>
                 `);
+            });
+
+            mainContent.querySelectorAll(".search-open-internal").forEach((link) => {
+                link.addEventListener("click", async (event) => {
+                    const provider = link.dataset.provider;
+                    const convId = link.dataset.convId;
+                    if (!provider || !convId) {
+                        return;
+                    }
+                    event.preventDefault();
+                    await openConversation(provider, convId);
+                });
             });
         }
 
@@ -455,6 +856,25 @@ async function loadTokenStats() {
     } catch (error) {
         console.error("Error fetching token stats:", error);
     }
+}
+
+async function initializeMainView() {
+    const selectionFromUrl = parseConversationFromUrl();
+    if (selectionFromUrl) {
+        setConversationPreloadMode(true);
+        await loadConversations();
+        const loaded = await openConversation(selectionFromUrl.provider, selectionFromUrl.convId, {
+            updateUrl: false,
+        });
+        setConversationPreloadMode(false);
+        if (!loaded) {
+            await Promise.all([loadActivityStats(), loadChatStatistics()]);
+        }
+        return;
+    }
+
+    setConversationPreloadMode(false);
+    await Promise.all([loadConversations(), loadActivityStats(), loadChatStatistics()]);
 }
 
 function scrollToTop() {
@@ -482,10 +902,24 @@ window.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("activity-settings-changed", (event) => {
         applyActivitySettingsToStatistics(event.detail || {});
     });
+    window.addEventListener("activity-day-selected", (event) => {
+        const detail = event.detail || {};
+        if (!detail.date) {
+            return;
+        }
+        applyActivityDayFilter(String(detail.date), detail.provider || null);
+    });
 
-    loadConversations();
-    loadActivityStats();
-    loadChatStatistics();
+    window.addEventListener("popstate", () => {
+        if (!parseConversationFromUrl()) {
+            window.location.reload();
+            return;
+        }
+        openConversationFromUrl();
+    });
+
+    initializeMainView();
+    renderActivityDayFilterControl();
 
     document.getElementById("search-input").addEventListener("keydown", handleSearchInput);
     document.getElementById("groupFilter").addEventListener("change", populateConversationsList);

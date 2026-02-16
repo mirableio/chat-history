@@ -89,6 +89,8 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertGreater(len(data), 0)
         providers = {item["provider"] for item in data}
         self.assertIn("chatgpt", providers)
+        self.assertIn("internal_url", data[0])
+        self.assertTrue(data[0]["internal_url"].startswith("/?provider="))
 
     def test_activity_endpoint_returns_daily_counts(self) -> None:
         response = self.client.get("/api/activity")
@@ -101,6 +103,29 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertGreater(len(activity["days"]), 0)
         first_key = next(iter(activity["days"].keys()))
         self.assertRegex(first_key, r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_activity_day_endpoint_filters_by_provider(self) -> None:
+        activity_response = self.client.get("/api/activity")
+        self.assertEqual(activity_response.status_code, 200)
+        activity = activity_response.json()
+
+        claude_day = next(
+            day
+            for day, entry in activity["days"].items()
+            if entry.get("providers", {}).get("claude", 0) > 0
+        )
+
+        day_response = self.client.get(f"/api/activity/day?date={claude_day}&provider=claude")
+        self.assertEqual(day_response.status_code, 200)
+        payload = day_response.json()
+        self.assertEqual(payload["date"], claude_day)
+        self.assertEqual(payload["provider"], "claude")
+        self.assertGreater(payload["total_messages"], 0)
+        self.assertGreater(len(payload["conversations"]), 0)
+        for conversation in payload["conversations"]:
+            self.assertEqual(conversation["provider"], "claude")
+            self.assertIn("id", conversation)
+            self.assertGreater(conversation["message_count"], 0)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlencode
 
 from markdown import markdown
 
@@ -202,6 +203,43 @@ class ChatHistoryService:
             "days": sorted_days,
         }
 
+    def get_activity_day(
+        self,
+        *,
+        day: str,
+        provider: str | None = None,
+    ) -> dict[str, Any]:
+        conversations: list[dict[str, Any]] = []
+        total_messages = 0
+
+        for conversation in self.conversations:
+            if provider and conversation.provider != provider:
+                continue
+
+            message_count = sum(
+                1
+                for message in conversation.messages
+                if str(message.created.date()) == day
+            )
+            if message_count == 0:
+                continue
+
+            conversations.append(
+                {
+                    "provider": conversation.provider,
+                    "id": conversation.id,
+                    "message_count": message_count,
+                }
+            )
+            total_messages += message_count
+
+        return {
+            "date": day,
+            "provider": provider,
+            "conversations": conversations,
+            "total_messages": total_messages,
+        }
+
     @staticmethod
     def _format_stats_for_conversations(
         conversations: list[ConversationRecord],
@@ -326,6 +364,7 @@ class ChatHistoryService:
             "text": markdown(text_source, extensions=["fenced_code"]),
             "role": role,
             "created": created_str,
+            "internal_url": f"/?{urlencode({'provider': conversation.provider, 'conv_id': conversation.id})}",
             "open_url": conversation.open_url,
         }
 

@@ -17,6 +17,7 @@ const ACTIVITY_FALLBACK_COLORS = [
   { barBg: "rgba(20, 184, 166, 0.45)", barBorder: "rgba(15, 118, 110, 1)" },
 ];
 const ACTIVITY_ROLLING_PERIOD = "rolling";
+const ACTIVITY_SETTINGS_STORAGE_KEY = "chat-history.activity-settings.v1";
 
 const activityState = {
   payload: null,
@@ -29,6 +30,67 @@ const activityState = {
 
 let activityBarChartInstance = null;
 
+function loadPersistedActivitySettings() {
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function savePersistedActivitySettings() {
+  try {
+    window.localStorage.setItem(
+      ACTIVITY_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        viewMode: activityState.viewMode,
+        selectedProviders: Array.from(activityState.selectedProviders),
+      })
+    );
+  } catch (_error) {
+    // Ignore storage errors; activity settings still work in-memory.
+  }
+}
+
+function applyPersistedActivitySettings() {
+  const persisted = loadPersistedActivitySettings();
+  if (!persisted) {
+    return;
+  }
+
+  const persistedViewMode = persisted.viewMode;
+  if (persistedViewMode === "unified" || persistedViewMode === "provider") {
+    activityState.viewMode = persistedViewMode;
+  }
+
+  if (Array.isArray(persisted.selectedProviders)) {
+    if (persisted.selectedProviders.length === 0) {
+      activityState.selectedProviders = new Set();
+      return;
+    }
+
+    const nextProviders = persisted.selectedProviders
+      .map((provider) => String(provider))
+      .filter((provider, index, arr) => arr.indexOf(provider) === index)
+      .filter((provider) => activityState.providers.includes(provider));
+
+    if (nextProviders.length > 0) {
+      activityState.selectedProviders = new Set(nextProviders);
+      return;
+    }
+
+    activityState.selectedProviders = new Set(activityState.providers);
+  }
+}
+
 function notifyActivitySettingsChanged() {
   window.dispatchEvent(
     new CustomEvent("activity-settings-changed", {
@@ -36,6 +98,20 @@ function notifyActivitySettingsChanged() {
         viewMode: activityState.viewMode,
         providers: activityState.providers.slice(),
         selectedProviders: Array.from(activityState.selectedProviders),
+      },
+    })
+  );
+}
+
+function notifyActivityDaySelected(day, provider = null) {
+  if (!day) {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent("activity-day-selected", {
+      detail: {
+        date: day,
+        provider,
       },
     })
   );
@@ -230,7 +306,16 @@ function showActivityEmptyState() {
 function renderUnifiedActivityView(dayCounts, year) {
   const graphContainer = document.getElementById("activity-graph");
   graphContainer.innerHTML = "";
-  buildActivityGraph(graphContainer, { data: dayCounts, year });
+  buildActivityGraph(graphContainer, {
+    data: dayCounts,
+    year,
+    click: (date, count) => {
+      if (Number(count || 0) <= 0) {
+        return;
+      }
+      notifyActivityDaySelected(date, null);
+    },
+  });
   buildActivityBarChart(dayCounts, year);
 }
 
@@ -264,6 +349,12 @@ function renderProviderActivityView(providerSeries, year) {
       data: providerSeries[provider],
       colorRanges: getProviderTheme(provider, index).heat,
       year,
+      click: (date, count) => {
+        if (Number(count || 0) <= 0) {
+          return;
+        }
+        notifyActivityDaySelected(date, provider);
+      },
     });
   });
 
@@ -328,6 +419,7 @@ function renderProviderFilters() {
   container.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       syncProviderSelectionsFromUI();
+      savePersistedActivitySettings();
       renderActivityDashboard();
       notifyActivitySettingsChanged();
     });
@@ -377,6 +469,7 @@ function bindActivityControlEvents() {
     .forEach((radio) => {
       radio.addEventListener("change", () => {
         activityState.viewMode = radio.value;
+        savePersistedActivitySettings();
         renderActivityDashboard();
         notifyActivitySettingsChanged();
       });
@@ -402,9 +495,11 @@ function setActivityPayload(rawPayload) {
   activityState.providers = resolveProvidersFromPayload(activityState.payload);
   activityState.selectedProviders = new Set(activityState.providers);
   activityState.selectedYear = ACTIVITY_ROLLING_PERIOD;
+  applyPersistedActivitySettings();
   if (activityState.providers.length < 2) {
     activityState.viewMode = "unified";
   }
+  savePersistedActivitySettings();
 
   bindActivityControlEvents();
   updateActivityControlsVisibility();
@@ -437,8 +532,13 @@ function buildActivityGraph(parentElement, options) {
 
   function processActivityList(activityByDay) {
     for (let [timestamp, count] of Object.entries(activityByDay)) {
-      const date = new Date(timestamp);
-      const displayDate = getDisplayDate(date);
+      let displayDate;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(timestamp))) {
+        displayDate = String(timestamp);
+      } else {
+        const date = new Date(timestamp);
+        displayDate = getDisplayDate(date);
+      }
 
       if (!objTimestamp[displayDate]) {
         objTimestamp[displayDate] = count;

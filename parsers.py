@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from models import ContentBlock, ConversationRecord, MessageRecord, Provider, utc_now
+
+CITATION_MARKER_RE = re.compile(r"cite.*?")
+MARKDOWN_LINK_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")
 
 
 def _parse_unix_datetime(raw_value: Any, fallback: datetime | None = None) -> datetime:
@@ -80,6 +85,14 @@ def _extract_text(value: Any, depth: int = 0) -> str:
         parts = [_extract_text(item, depth + 1) for item in value[:12]]
         return "\n".join(part for part in parts if part).strip()
     if isinstance(value, dict):
+        skipped_keys = {
+            "content_type",
+            "type",
+            "role",
+            "status",
+            "recipient",
+            "channel",
+        }
         priority_keys = (
             "text",
             "thinking",
@@ -97,6 +110,8 @@ def _extract_text(value: Any, depth: int = 0) -> str:
         ]
         parts: list[str] = []
         for key in ordered_keys[:16]:
+            if key in skipped_keys:
+                continue
             text_value = _extract_text(value.get(key), depth + 1)
             if text_value:
                 parts.append(text_value)
@@ -127,6 +142,111 @@ def _parse_chatgpt_part(content_type: str, part: Any) -> list[ContentBlock]:
 
 def _normalize_text_for_dedupe(value: str) -> str:
     return " ".join(value.split()).strip()
+
+
+def _normalize_reference_url(raw_url: str) -> str:
+    cleaned = raw_url.strip()
+    if not cleaned:
+        return ""
+    split = urlsplit(cleaned)
+    if split.scheme not in {"http", "https"}:
+        return cleaned
+    filtered_query = [
+        (key, value)
+        for key, value in parse_qsl(split.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+    ]
+    query = urlencode(filtered_query, doseq=True)
+    return urlunsplit((split.scheme, split.netloc, split.path, query, split.fragment))
+
+
+def _extract_reference_urls(reference: dict[str, Any]) -> list[str]:
+    collected: list[str] = []
+
+    alt = reference.get("alt")
+    if isinstance(alt, str) and alt.strip():
+        collected.extend(MARKDOWN_LINK_URL_RE.findall(alt))
+
+    safe_urls = reference.get("safe_urls")
+    if isinstance(safe_urls, list):
+        for url in safe_urls:
+            if isinstance(url, str) and url.strip():
+                collected.append(url.strip())
+
+    items = reference.get("items")
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url")
+            if isinstance(url, str) and url.strip():
+                collected.append(url.strip())
+    return collected
+
+
+def _reference_label(url: str) -> str:
+    split = urlsplit(url)
+    if split.scheme not in {"http", "https"}:
+        return url
+    path = split.path or ""
+    if path in {"", "/"}:
+        return split.netloc
+    return f"{split.netloc}{path}"
+
+
+def _render_content_reference_links(references: list[dict[str, Any]]) -> str:
+    deduped_urls: list[str] = []
+    seen_urls: set[str] = set()
+    for reference in references:
+        for raw_url in _extract_reference_urls(reference):
+            normalized = _normalize_reference_url(raw_url)
+            if not normalized or normalized in seen_urls:
+                continue
+            seen_urls.add(normalized)
+            deduped_urls.append(normalized)
+
+    if not deduped_urls:
+        return ""
+
+    links = [f"[{_reference_label(url)}]({url})" for url in deduped_urls]
+    return f"({' · '.join(links)})"
+
+
+def _apply_chatgpt_content_references(
+    text: str,
+    message_metadata: dict[str, Any] | None,
+) -> str:
+    if not text:
+        return text
+    if not isinstance(message_metadata, dict):
+        return CITATION_MARKER_RE.sub("", text)
+
+    references = message_metadata.get("content_references")
+    replacements: dict[str, str] = {}
+    grouped_references: dict[str, list[dict[str, Any]]] = {}
+    if isinstance(references, list):
+        for reference in references:
+            if not isinstance(reference, dict):
+                continue
+            matched_text = reference.get("matched_text")
+            if not isinstance(matched_text, str) or not matched_text:
+                continue
+            grouped_references.setdefault(matched_text, []).append(reference)
+
+    for matched_text, refs in grouped_references.items():
+        replacement = _render_content_reference_links(refs)
+        if replacement:
+            replacements[matched_text] = replacement
+
+    rendered = text
+    for matched_text, replacement in sorted(
+        replacements.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        rendered = rendered.replace(matched_text, replacement)
+
+    return CITATION_MARKER_RE.sub("", rendered)
 
 
 def _parse_chatgpt_content(
@@ -180,6 +300,12 @@ def _parse_chatgpt_content(
 
     if not blocks:
         fallback_text = _extract_text(content)
+        if not fallback_text and content_type == "text":
+            return []
+        if fallback_text and fallback_text.strip().lower() == content_type.strip().lower():
+            if content_type == "text":
+                return []
+            fallback_text = ""
         blocks.append(
             ContentBlock(
                 type=content_type,
@@ -191,11 +317,14 @@ def _parse_chatgpt_content(
     deduplicated: list[ContentBlock] = []
     seen: set[tuple[str, str]] = set()
     for block in blocks:
-        key = (block.type, _normalize_text_for_dedupe(block.text))
+        rendered_text = _apply_chatgpt_content_references(block.text, message_metadata).strip()
+        if not rendered_text:
+            continue
+        key = (block.type, _normalize_text_for_dedupe(rendered_text))
         if key in seen:
             continue
         seen.add(key)
-        deduplicated.append(block)
+        deduplicated.append(ContentBlock(type=block.type, text=rendered_text, data=block.data))
     return deduplicated
 
 
@@ -266,6 +395,8 @@ def parse_chatgpt_export(path: Path) -> list[ConversationRecord]:
             message_updated = _parse_unix_datetime(raw_message.get("update_time"), fallback=message_created)
 
             metadata = raw_message.get("metadata") or {}
+            if isinstance(metadata, dict) and metadata.get("is_visually_hidden_from_conversation"):
+                continue
             model = metadata.get("model_slug") or default_model
 
             content_blocks = _parse_chatgpt_content(

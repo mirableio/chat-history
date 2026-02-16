@@ -44,6 +44,16 @@ def create_app() -> FastAPI:
     def get_activity(request: Request):
         return JSONResponse(content=_get_service(request).get_activity())
 
+    @api_app.get("/activity/day")
+    def get_activity_day(
+        request: Request,
+        date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        provider: str | None = Query(default=None),
+    ):
+        return JSONResponse(
+            content=_get_service(request).get_activity_day(day=date, provider=provider)
+        )
+
     @api_app.get("/statistics")
     def get_statistics(request: Request):
         return JSONResponse(content=_get_service(request).get_statistics())
