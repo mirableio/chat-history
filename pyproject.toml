@@ -1,6 +1,6 @@
 [project]
 name = "chat-history"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local UI and tooling for browsing ChatGPT and Claude history exports"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -13,6 +13,7 @@ import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from chat_history import __version__ as PACKAGE_VERSION
 from chat_history.config import load_settings
 from chat_history.exporter import export_conversation
 from chat_history.services import ChatHistoryService
@@ -101,8 +103,20 @@ def _load_service(*, build_embeddings: bool = False) -> ChatHistoryService:
     return service
 
 
+def _current_version() -> str:
+    try:
+        return package_version("chat-history")
+    except PackageNotFoundError:
+        return PACKAGE_VERSION
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Chat history command line tool")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_current_version()}",
+    )
     subcommands = parser.add_subparsers(dest="command")
 
     serve_parser = subcommands.add_parser("serve", help="Start web server")
@@ -403,6 +417,11 @@ def _is_provider_name_match(name: str, provider: str) -> bool:
     return any(token in lowered for token in _provider_name_tokens(provider))
 
 
+def _is_claude_default_export_zip_name(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.endswith(".zip") and lowered.startswith("data-") and "-batch-" in lowered
+
+
 def _scan_local_candidates(search_dir: Path, provider: str) -> list[Path]:
     if not search_dir.exists() or not search_dir.is_dir():
         return []
@@ -415,7 +434,10 @@ def _scan_local_candidates(search_dir: Path, provider: str) -> list[Path]:
         name_matches = _is_provider_name_match(path.name, provider)
         if path.is_file():
             lower_name = path.name.lower()
-            if path.suffix.lower() == ".zip" and name_matches:
+            if path.suffix.lower() == ".zip" and (
+                name_matches
+                or (provider == "claude" and _is_claude_default_export_zip_name(lower_name))
+            ):
                 candidates.append(path)
             elif lower_name == "conversations.json":
                 candidates.append(path)
@@ -447,7 +469,11 @@ def _scan_download_candidates(provider: str) -> list[Path]:
         if not path.is_file():
             continue
         name = path.name.lower()
-        if path.suffix.lower() == ".zip" and provider_token in name:
+        if path.suffix.lower() != ".zip":
+            continue
+        if provider_token in name or (
+            provider == "claude" and _is_claude_default_export_zip_name(name)
+        ):
             candidates.append(path)
 
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
