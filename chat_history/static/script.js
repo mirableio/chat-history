@@ -123,7 +123,7 @@ function renderMarkdown(value) {
         return formatTextWithBreaks(text);
     }
     try {
-        const rendered = marked.parse(text);
+        const rendered = marked.parse(text, { breaks: true });
         const template = document.createElement("template");
         template.innerHTML = rendered;
         template.content.querySelectorAll("a[href]").forEach((link) => {
@@ -366,6 +366,67 @@ function populateConversationsList() {
     }
 }
 
+function findConversation(provider, convId) {
+    return conversationData.find(
+        conv => conv.provider === provider && conv.id === convId
+    ) || null;
+}
+
+function setMainFavoriteButtonState(isFavorite) {
+    const favoriteButton = document.getElementById("conversation-favorite-toggle");
+    if (!favoriteButton) {
+        return;
+    }
+    favoriteButton.classList.toggle("is-favorite", Boolean(isFavorite));
+    favoriteButton.setAttribute("aria-pressed", isFavorite ? "true" : "false");
+    const heart = favoriteButton.querySelector(".conversation-favorite-heart");
+    if (heart) {
+        heart.textContent = isFavorite ? "♥" : "♡";
+    }
+}
+
+function setConversationFavoriteState(provider, convId, isFavorite) {
+    const conversation = findConversation(provider, convId);
+    if (conversation) {
+        conversation.is_favorite = Boolean(isFavorite);
+    }
+
+    if (
+        messageRenderState.currentConversation &&
+        messageRenderState.currentConversation.provider === provider &&
+        messageRenderState.currentConversation.conversation_id === convId
+    ) {
+        messageRenderState.currentConversation.is_favorite = Boolean(isFavorite);
+        setMainFavoriteButtonState(Boolean(isFavorite));
+    }
+
+    const rowKey = toConversationKey(provider, convId);
+    const row = Array.from(document.querySelectorAll("#sidebar-conversations > div"))
+        .find(elem => elem.dataset && elem.dataset.key === rowKey);
+    if (!row) {
+        return;
+    }
+    const heartContainer = row.querySelector(".heart-div");
+    if (!heartContainer) {
+        return;
+    }
+    heartContainer.classList.toggle("is-favorite", Boolean(isFavorite));
+}
+
+async function toggleFavorite(provider, convId) {
+    const response = await fetch(
+        `/api/toggle_favorite?provider=${encodeURIComponent(provider)}&conv_id=${encodeURIComponent(convId)}`,
+        { method: "POST" }
+    );
+    if (!response.ok) {
+        throw new Error(`Failed to toggle favorite: ${response.status}`);
+    }
+    const data = await response.json();
+    const isFavorite = Boolean(data.is_favorite);
+    setConversationFavoriteState(provider, convId, isFavorite);
+    return isFavorite;
+}
+
 function renderActivityDayFilterControl() {
     const groupFilter = document.getElementById("groupFilter");
     const container = document.getElementById("activity-day-filter");
@@ -487,36 +548,32 @@ async function applyActivityDayFilter(date, provider = null) {
 async function handleHeartClick(event, provider, convId) {
     event.stopPropagation();
     try {
-        const response = await fetch(
-            `/api/toggle_favorite?provider=${encodeURIComponent(provider)}&conv_id=${encodeURIComponent(convId)}`,
-            { method: "POST" }
-        );
-        const data = await response.json();
-
-        const conversation = conversationData.find(
-            conv => conv.provider === provider && conv.id === convId
-        );
-        if (conversation) {
-            conversation.is_favorite = data.is_favorite;
-        }
-
-        const rowKey = toConversationKey(provider, convId);
-        const row = Array.from(document.querySelectorAll("#sidebar-conversations > div"))
-            .find(elem => elem.dataset && elem.dataset.key === rowKey);
-        if (!row) {
-            return;
-        }
-        const heartContainer = row.querySelector(".heart-div");
-        if (!heartContainer) {
-            return;
-        }
-        if (data.is_favorite) {
-            heartContainer.classList.add("is-favorite");
-        } else {
-            heartContainer.classList.remove("is-favorite");
-        }
+        await toggleFavorite(provider, convId);
     } catch (error) {
         console.error("Failed to toggle favorite status:", error);
+    }
+}
+
+async function handleConversationFavoriteClick(event) {
+    const button = event.currentTarget;
+    if (!button) {
+        return;
+    }
+    const provider = button.dataset.provider;
+    const convId = button.dataset.convId;
+    if (!provider || !convId) {
+        return;
+    }
+
+    button.disabled = true;
+    button.classList.add("is-loading");
+    try {
+        await toggleFavorite(provider, convId);
+    } catch (error) {
+        console.error("Failed to toggle favorite status:", error);
+    } finally {
+        button.disabled = false;
+        button.classList.remove("is-loading");
     }
 }
 
@@ -563,10 +620,32 @@ function renderModeToggleHtml() {
     `;
 }
 
+function renderConversationFavoriteToggleHtml(provider, convId, isFavorite) {
+    const favoriteClass = isFavorite ? "is-favorite" : "";
+    const favoriteHeart = isFavorite ? "♥" : "♡";
+    return `
+        <button
+            class="conversation-favorite-btn ${favoriteClass}"
+            id="conversation-favorite-toggle"
+            data-provider="${escapeHtml(provider)}"
+            data-conv-id="${escapeHtml(convId)}"
+            type="button"
+            aria-pressed="${isFavorite ? "true" : "false"}"
+        >
+            <span class="conversation-favorite-heart" aria-hidden="true">${favoriteHeart}</span>
+        </button>
+    `;
+}
+
 function renderConversationMessages(data, { preserveScroll = false } = {}) {
     const wrapper = document.getElementById("main-content-wrapper");
     const previousScroll = preserveScroll && wrapper ? wrapper.scrollTop : 0;
     const mainContent = document.getElementById("main-content");
+    const summaryConversation = findConversation(data.provider, data.conversation_id);
+    const isFavorite = summaryConversation
+        ? Boolean(summaryConversation.is_favorite)
+        : Boolean(data.is_favorite);
+    data.is_favorite = isFavorite;
 
     mainContent.innerHTML = `
         <div class="p-2 border-b flex items-center justify-between gap-3 flex-wrap">
@@ -577,7 +656,10 @@ function renderConversationMessages(data, { preserveScroll = false } = {}) {
                     <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
                 </a>
             </div>
-            ${renderModeToggleHtml()}
+            <div class="conversation-header-actions">
+                ${renderConversationFavoriteToggleHtml(data.provider, data.conversation_id, isFavorite)}
+                ${renderModeToggleHtml()}
+            </div>
         </div>
     `;
 
@@ -612,6 +694,11 @@ function renderConversationMessages(data, { preserveScroll = false } = {}) {
                 setRenderMode(nextMode, { rerender: true });
             });
         });
+    }
+
+    const favoriteToggle = document.getElementById("conversation-favorite-toggle");
+    if (favoriteToggle) {
+        favoriteToggle.addEventListener("click", handleConversationFavoriteClick);
     }
 
     if (preserveScroll && wrapper) {

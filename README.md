@@ -50,6 +50,7 @@ All commands work as `uvx chat-history <command>` or, if installed locally, `cha
 | `serve` | Start the web server |
 | `export` | Export conversations to markdown |
 | `inspect` | Print conversation and message counts |
+| `install` | Reinstall `chat-history` via `uvx --reinstall chat-history` |
 
 ### serve
 

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import socket
+import subprocess
 import shutil
 import sys
 import threading
@@ -169,6 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_parser.set_defaults(func=_run_init_command)
 
+    install_parser = subcommands.add_parser(
+        "install",
+        help="Reinstall chat-history via uvx",
+    )
+    install_parser.set_defaults(func=_run_install_command)
+
     return parser
 
 
@@ -317,6 +324,18 @@ def _cmd_inspect(service: ChatHistoryService, args: argparse.Namespace) -> int:
 def _run_inspect_command(args: argparse.Namespace) -> int:
     service = _load_service(build_embeddings=False)
     return _cmd_inspect(service, args)
+
+
+def _run_install_command(args: argparse.Namespace) -> int:
+    del args
+    command = ["uvx", "--reinstall", "chat-history", "--version"]
+    _info(f"Running {' '.join(command)}")
+    try:
+        result = subprocess.run(command, check=False)
+    except FileNotFoundError:
+        _error("uvx is not installed or not in PATH.")
+        return 1
+    return int(result.returncode)
 
 
 def _read_env_values(env_path: Path) -> dict[str, str]:

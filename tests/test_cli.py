@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from chat_history.cli import (
     _is_claude_default_export_zip_name,
+    _run_install_command,
     _scan_local_candidates,
     build_parser,
 )
@@ -47,6 +50,25 @@ class CliCandidateTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as context:
                 parser.parse_args(["--version"])
         self.assertEqual(context.exception.code, 0)
+
+    def test_parser_supports_install_command(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["install"])
+        self.assertEqual(args.command, "install")
+        self.assertTrue(callable(args.func))
+
+    @patch("chat_history.cli.subprocess.run")
+    def test_install_command_invokes_uvx_reinstall(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=["uvx", "--reinstall", "chat-history", "--version"],
+            returncode=0,
+        )
+        exit_code = _run_install_command(build_parser().parse_args(["install"]))
+        self.assertEqual(exit_code, 0)
+        run_mock.assert_called_once_with(
+            ["uvx", "--reinstall", "chat-history", "--version"],
+            check=False,
+        )
 
 
 if __name__ == "__main__":
