@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from chat_history.config import load_settings
@@ -72,6 +72,15 @@ def create_app() -> FastAPI:
         query: str = Query(..., min_length=2, description="Search query"),
     ):
         return JSONResponse(content=_get_service(request).search(query))
+
+    @api_app.get("/assets/{provider}/{asset_id}")
+    def get_asset(provider: str, asset_id: str, request: Request):
+        asset = _get_service(request).get_asset(provider, asset_id)
+        if asset is None:
+            return JSONResponse(content={"error": "Asset not found"}, status_code=404)
+        response = FileResponse(path=str(asset.path), media_type=asset.media_type)
+        response.headers["Cache-Control"] = "private, max-age=86400"
+        return response
 
     @api_app.post("/toggle_favorite")
     def toggle_favorite(provider: str, conv_id: str, request: Request):

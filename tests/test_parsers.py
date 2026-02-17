@@ -38,6 +38,21 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(len(target.messages), 1)
         self.assertIn("from metadata", target.messages[0].text())
 
+    def test_chatgpt_image_asset_part_has_structured_metadata(self) -> None:
+        conversations = parse_chatgpt_export(FIXTURES_DIR / "chatgpt_2026_sample.json")
+        target = next(conversation for conversation in conversations if conversation.id == "chatgpt-conv-1")
+        assistant = next(message for message in target.messages if message.id == "msg-assistant-main")
+        image_block = next(block for block in assistant.content if block.type == "image_asset_pointer")
+        asset = image_block.data.get("asset")
+
+        self.assertEqual(image_block.text, "[Image]")
+        self.assertIsInstance(asset, dict)
+        self.assertEqual(asset.get("kind"), "image")
+        self.assertEqual(asset.get("source_pointer"), "file-service://image-1")
+        self.assertEqual(asset.get("width"), None)
+        self.assertEqual(asset.get("height"), None)
+        self.assertEqual(asset.get("is_resolved"), False)
+
     def test_chatgpt_ignores_hidden_and_empty_text_messages(self) -> None:
         payload = [
             {
@@ -262,6 +277,62 @@ class ParserTests(unittest.TestCase):
         self.assertIn("tool_result", block_types)
         self.assertIn("attachment", block_types)
         self.assertIn("file", block_types)
+
+    def test_claude_attachment_uses_full_extracted_content_text(self) -> None:
+        conversations = parse_claude_export(FIXTURES_DIR / "claude_2026_sample.json")
+        conversation = conversations[0]
+        assistant = next(message for message in conversation.messages if message.role == "assistant")
+
+        attachment_block = next(block for block in assistant.content if block.type == "attachment")
+        file_block = next(block for block in assistant.content if block.type == "file")
+
+        self.assertEqual(attachment_block.text, "sample notes")
+        self.assertEqual(attachment_block.data.get("file_name"), "notes.txt")
+        self.assertEqual(attachment_block.data.get("file_type"), "text/plain")
+        self.assertTrue(attachment_block.data.get("has_extracted_content"))
+        self.assertEqual(file_block.data.get("file_name"), "draft.md")
+
+    def test_claude_attachment_and_file_fallback_names(self) -> None:
+        payload = [
+            {
+                "uuid": "claude-conv-fallbacks",
+                "name": "Fallback names",
+                "created_at": "2025-01-01T00:00:00.000000Z",
+                "updated_at": "2025-01-01T00:01:00.000000Z",
+                "chat_messages": [
+                    {
+                        "uuid": "claude-msg-fallbacks",
+                        "sender": "assistant",
+                        "created_at": "2025-01-01T00:00:30.000000Z",
+                        "updated_at": "2025-01-01T00:00:30.000000Z",
+                        "content": [{"type": "text", "text": "ok"}],
+                        "attachments": [
+                            {
+                                "file_name": "",
+                                "file_size": 10,
+                                "file_type": "txt",
+                                "extracted_content": "Attachment body",
+                            }
+                        ],
+                        "files": [{"file_name": ""}],
+                    }
+                ],
+            }
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as temp_file:
+            json.dump(payload, temp_file)
+            temp_path = Path(temp_file.name)
+        try:
+            conversations = parse_claude_export(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        assistant = conversations[0].messages[0]
+        attachment_block = next(block for block in assistant.content if block.type == "attachment")
+        file_block = next(block for block in assistant.content if block.type == "file")
+        self.assertEqual(attachment_block.data.get("file_name"), "attachment-1")
+        self.assertEqual(file_block.data.get("file_name"), "file-1")
+        self.assertEqual(file_block.text, "[File] file-1")
 
     def test_provider_merge_and_utc_datetimes(self) -> None:
         conversations = load_provider_conversations(

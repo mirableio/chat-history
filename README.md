@@ -24,6 +24,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/install
    The wizard finds your export files, configures everything, and opens the browser.
 
 Next time, run `uvx chat-history` in the same folder to start browsing.
+To update to the latest version, run `uvx chat-history install`.
 
 To export all conversations as markdown (useful for feeding to other AI tools):
 

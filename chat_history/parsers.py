@@ -11,6 +11,52 @@ from chat_history.models import ContentBlock, ConversationRecord, MessageRecord,
 
 CITATION_MARKER_RE = re.compile(r"cite.*?")
 MARKDOWN_LINK_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")
+CHATGPT_ASSET_KIND_BY_PART_TYPE = {
+    "image_asset_pointer": "image",
+    "audio_asset_pointer": "audio",
+    "real_time_user_audio_video_asset_pointer": "audio",
+}
+
+
+def _string_or_none(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(float(stripped))
+        except ValueError:
+            return None
+    return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_unix_datetime(raw_value: Any, fallback: datetime | None = None) -> datetime:
@@ -119,6 +165,97 @@ def _extract_text(value: Any, depth: int = 0) -> str:
     return ""
 
 
+def _chatgpt_asset_placeholder(part_type: str) -> str:
+    kind = CHATGPT_ASSET_KIND_BY_PART_TYPE.get(part_type)
+    if kind == "image":
+        return "[Image]"
+    if kind == "audio":
+        return "[Audio]"
+    return f"[{_humanize_identifier(part_type)}]"
+
+
+def _extract_chatgpt_asset_pointer(part: dict[str, Any]) -> str | None:
+    for key in ("asset_pointer", "audio_asset_pointer", "video_container_asset_pointer", "id"):
+        value = _string_or_none(part.get(key))
+        if value:
+            return value
+    return None
+
+
+def _build_chatgpt_asset_metadata(part_type: str, part: dict[str, Any]) -> dict[str, Any] | None:
+    kind = CHATGPT_ASSET_KIND_BY_PART_TYPE.get(part_type)
+    if not kind:
+        return None
+
+    source_pointer = _extract_chatgpt_asset_pointer(part)
+    duration = (
+        _float_or_none(part.get("duration_seconds"))
+        or _float_or_none(part.get("duration_sec"))
+        or _float_or_none(part.get("duration"))
+    )
+
+    return {
+        "asset_id": None,
+        "kind": kind,
+        "source_pointer": source_pointer,
+        "mime_type": _string_or_none(part.get("mime_type")),
+        "size_bytes": _int_or_none(part.get("size_bytes")),
+        "width": _int_or_none(part.get("width")),
+        "height": _int_or_none(part.get("height")),
+        "format": _string_or_none(part.get("format")),
+        "duration": duration,
+        "is_resolved": False,
+        "asset_url": None,
+    }
+
+
+def _fallback_file_name(prefix: str, index: int) -> str:
+    return f"{prefix}-{index + 1}"
+
+
+def _build_claude_attachment_block(
+    attachment: dict[str, Any],
+    *,
+    attachment_index: int,
+) -> ContentBlock:
+    raw_file_name = _string_or_none(attachment.get("file_name"))
+    file_name = raw_file_name or _fallback_file_name("attachment", attachment_index)
+    file_type = _string_or_none(attachment.get("file_type")) or "unknown"
+    extracted_content = _string_or_none(attachment.get("extracted_content"))
+    file_size = _int_or_none(attachment.get("file_size"))
+
+    metadata = _lightweight_metadata(attachment)
+    metadata["file_name"] = file_name
+    metadata["file_type"] = file_type
+    metadata["attachment_index"] = attachment_index
+    if file_size is not None:
+        metadata["file_size"] = file_size
+
+    if extracted_content:
+        metadata["has_extracted_content"] = True
+        metadata["attachment_label"] = f"{file_name} ({file_type})"
+        metadata["extracted_content_length"] = len(extracted_content)
+        text = extracted_content
+    else:
+        metadata["has_extracted_content"] = False
+        text = f"[Attachment] {file_name} ({file_type})"
+
+    return ContentBlock(type="attachment", text=text, data=metadata)
+
+
+def _build_claude_file_block(file_record: dict[str, Any], *, file_index: int) -> ContentBlock:
+    raw_file_name = _string_or_none(file_record.get("file_name"))
+    file_name = raw_file_name or _fallback_file_name("file", file_index)
+    metadata = _lightweight_metadata(file_record)
+    metadata["file_name"] = file_name
+    metadata["file_index"] = file_index
+    return ContentBlock(
+        type="file",
+        text=f"[File] {file_name}",
+        data=metadata,
+    )
+
+
 def _parse_chatgpt_part(content_type: str, part: Any) -> list[ContentBlock]:
     if isinstance(part, str):
         text = part.strip()
@@ -133,15 +270,36 @@ def _parse_chatgpt_part(content_type: str, part: Any) -> list[ContentBlock]:
         or _extract_text(part.get("message"))
         or _extract_text(part.get("title"))
     )
+    asset_metadata = _build_chatgpt_asset_metadata(part_type, part)
 
     if not text:
-        text = f"[{_humanize_identifier(part_type)}]"
+        text = _chatgpt_asset_placeholder(part_type)
 
-    return [ContentBlock(type=part_type, text=text, data=_lightweight_metadata(part))]
+    metadata = _lightweight_metadata(part)
+    if asset_metadata:
+        metadata["asset"] = asset_metadata
+
+    return [ContentBlock(type=part_type, text=text, data=metadata)]
 
 
 def _normalize_text_for_dedupe(value: str) -> str:
     return " ".join(value.split()).strip()
+
+
+def _chatgpt_block_dedupe_key(block: ContentBlock, rendered_text: str) -> tuple[str, ...]:
+    normalized_text = _normalize_text_for_dedupe(rendered_text)
+    block_data = block.data if isinstance(block.data, dict) else {}
+    asset_payload = block_data.get("asset")
+    if isinstance(asset_payload, dict):
+        source_pointer = _string_or_none(asset_payload.get("source_pointer"))
+        if source_pointer:
+            return (block.type, normalized_text, source_pointer)
+
+    source_pointer = _string_or_none(block_data.get("asset_pointer"))
+    if source_pointer:
+        return (block.type, normalized_text, source_pointer)
+
+    return (block.type, normalized_text)
 
 
 def _normalize_reference_url(raw_url: str) -> str:
@@ -315,12 +473,12 @@ def _parse_chatgpt_content(
         )
 
     deduplicated: list[ContentBlock] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, ...]] = set()
     for block in blocks:
         rendered_text = _apply_chatgpt_content_references(block.text, message_metadata).strip()
         if not rendered_text:
             continue
-        key = (block.type, _normalize_text_for_dedupe(rendered_text))
+        key = _chatgpt_block_dedupe_key(block, rendered_text)
         if key in seen:
             continue
         seen.add(key)
@@ -512,31 +670,23 @@ def parse_claude_export(path: Path) -> list[ConversationRecord]:
 
             attachments = raw_message.get("attachments")
             if isinstance(attachments, list):
-                for attachment in attachments:
+                for attachment_index, attachment in enumerate(attachments):
                     if not isinstance(attachment, dict):
                         continue
-                    file_name = str(attachment.get("file_name") or "attachment")
-                    attachment_type = str(attachment.get("file_type") or "unknown")
                     content_blocks.append(
-                        ContentBlock(
-                            type="attachment",
-                            text=f"[Attachment] {file_name} ({attachment_type})",
-                            data=_lightweight_metadata(attachment),
+                        _build_claude_attachment_block(
+                            attachment,
+                            attachment_index=attachment_index,
                         )
                     )
 
             files = raw_message.get("files")
             if isinstance(files, list):
-                for file_record in files:
+                for file_index, file_record in enumerate(files):
                     if not isinstance(file_record, dict):
                         continue
-                    file_name = str(file_record.get("file_name") or "file")
                     content_blocks.append(
-                        ContentBlock(
-                            type="file",
-                            text=f"[File] {file_name}",
-                            data=_lightweight_metadata(file_record),
-                        )
+                        _build_claude_file_block(file_record, file_index=file_index)
                     )
 
             if not content_blocks:

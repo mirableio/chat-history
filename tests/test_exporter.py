@@ -96,6 +96,23 @@ class ExporterTests(unittest.TestCase):
         exported_claude = list((output_dir / "claude").glob("*.md"))
         self.assertGreater(len(exported_claude), 0)
 
+    def test_export_includes_claude_attachment_extracted_text(self) -> None:
+        service = self._build_service()
+        conversation = next(conv for conv in service.conversations if conv.provider == "claude")
+        output_dir = Path(self._tmp_dir.name) / "export-claude-attachment"
+        output_path = export_conversation(
+            conversation=conversation,
+            output_dir=output_dir,
+            include_system=True,
+            include_tool=True,
+            include_thinking=True,
+            include_attachments=True,
+        )
+
+        content = output_path.read_text(encoding="utf-8")
+        self.assertIn("sample notes", content)
+        self.assertIn("**[file]**", content)
+
 
 if __name__ == "__main__":
     unittest.main()

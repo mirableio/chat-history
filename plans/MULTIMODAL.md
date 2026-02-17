@@ -136,8 +136,13 @@ Reason:
 
 2. Claude:
    - Convert `attachments[]` and `files[]` into `ContentBlock`s with structured metadata.
-   - Preserve long `extracted_content` explicitly (do not rely on `_lightweight_metadata` for this field).
+   - Preserve long `extracted_content` explicitly in parser flow before `_lightweight_metadata`:
+     - map full `extracted_content` to `block.text` for text-attachment rendering/search
+     - if needed, also keep raw value in a dedicated data key (e.g. `data.extracted_content_raw`)
+     - do not route long `extracted_content` through `_lightweight_metadata` (it has truncation caps)
    - Add fallback naming when `file_name` is empty.
+   - Keep `attachments[]` and `files[]` separate (`attachment` vs `file`) in V1/V2.
+     - do not merge by heuristic; metadata shapes and UX roles differ.
 
 ### Model (`chat_history/models.py`)
 
@@ -153,7 +158,15 @@ Define deterministic `asset_id`:
 
 `sha1(f"{provider}|{conversation_id}|{message_id}|{block_type}|{source_pointer_or_filename}|{block_index}")[:20]`
 
-This is stable across reloads as long as source export and conversation structure are unchanged.
+Stability guarantee:
+
+- session-stable/reload-stable for the same parser output
+- not guaranteed permanently stable across parser changes that shift block ordering (`block_index` can change)
+
+Decision:
+
+- acceptable for V1 because IDs are ephemeral and registry-backed
+- do not persist `asset_id` into long-lived stores (DB/cache/index)
 
 ## Serving Strategy
 
@@ -176,6 +189,7 @@ Endpoint rules:
 - strict existence checks and path normalization
 - return 404 for unresolved/missing assets
 - set content type from extension or metadata
+- set `Cache-Control: private, max-age=86400` for resolved assets (safe local cache)
 
 ## Service/API Changes
 
@@ -190,6 +204,9 @@ Endpoint rules:
 - Build registry on `service.load()`
 - Key by `asset_id` -> resolved absolute path + metadata
 - Rebuild on reload/init
+- Expected memory footprint:
+  - ~3k-5k assets: low single-digit MB
+  - even ~50k assets is still manageable (mostly short strings + paths)
 
 ## Frontend Changes
 
@@ -201,6 +218,7 @@ Primary files:
 Rendering strategy:
 
 1. Detect `block.data.asset` and route to asset renderer.
+   - current hook point is existing `ATTACHMENT_BLOCK_TYPES` handling in `renderMessageBlock`.
 2. Add per-kind renderers:
    - image
    - audio
@@ -279,6 +297,7 @@ Exit criteria:
    - attachments with long `extracted_content`
    - files with empty/non-empty names
 3. Deterministic `asset_id` stability.
+   - explicitly test that stability is parser-output dependent (not persisted-contract stable).
 
 ### API tests
 
@@ -316,7 +335,6 @@ Exit criteria:
 1. Should unresolved assets be included in markdown export as pointer stubs by default?
 2. Should transcript blocks be grouped per user turn or rendered inline as-is?
 3. Should we add a UI toggle to hide/show all attachment blocks?
-4. Should Claude `files[]` name-only references be merged with `attachments[]` when they likely refer to the same file?
 
 ## Definition of Done (V1)
 
