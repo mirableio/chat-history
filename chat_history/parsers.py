@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from chat_history.coerce import (
+    float_or_none as _float_or_none,
+    int_or_none as _int_or_none,
+    string_or_none as _string_or_none,
+)
 from chat_history.models import ContentBlock, ConversationRecord, MessageRecord, Provider, utc_now
 
 CITATION_MARKER_RE = re.compile(r"cite.*?")
@@ -16,47 +21,6 @@ CHATGPT_ASSET_KIND_BY_PART_TYPE = {
     "audio_asset_pointer": "audio",
     "real_time_user_audio_video_asset_pointer": "audio",
 }
-
-
-def _string_or_none(value: Any) -> str | None:
-    if isinstance(value, str):
-        stripped = value.strip()
-        return stripped or None
-    return None
-
-
-def _int_or_none(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(float(stripped))
-        except ValueError:
-            return None
-    return None
-
-
-def _float_or_none(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return float(stripped)
-        except ValueError:
-            return None
-    return None
 
 
 def _parse_unix_datetime(raw_value: Any, fallback: datetime | None = None) -> datetime:

@@ -11,6 +11,11 @@ from urllib.parse import urlencode
 
 from markdown import markdown
 
+from chat_history.coerce import (
+    float_or_none as _float_or_none,
+    int_or_none as _int_or_none,
+    string_or_none as _string_or_none,
+)
 from chat_history.config import Settings
 from chat_history.embeddings import (
     TYPE_CONVERSATION,
@@ -80,6 +85,7 @@ class ChatHistoryService:
         self._openai_client = None
         self._embedding_indices: list[ProviderEmbeddingIndex] = []
         self._asset_registry: dict[tuple[str, str], ResolvedAsset] = {}
+        self._asset_resolution_stats: dict[str, dict[str, int]] = {}
 
     def load(self, *, build_embeddings: bool = True) -> None:
         self._ensure_dirs()
@@ -98,7 +104,7 @@ class ChatHistoryService:
             for message in conversation.messages:
                 self._message_map[(conversation.provider, message.id)] = (conversation, message)
 
-        self._build_asset_registry()
+        self._asset_resolution_stats = self._build_asset_registry()
 
         if self.settings.openai_enabled and build_embeddings:
             self._openai_client = create_openai_client(
@@ -114,6 +120,7 @@ class ChatHistoryService:
         for conversation in self.conversations:
             by_provider[conversation.provider] += 1
         print(f"-- Loaded {len(self.conversations)} conversations: {dict(by_provider)}")
+        self._log_asset_stats()
 
     def _ensure_dirs(self) -> None:
         self.settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -147,46 +154,29 @@ class ChatHistoryService:
                 indices.append(index)
         return indices
 
-    @staticmethod
-    def _string_or_none(value: Any) -> str | None:
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return None
+    def _log_asset_stats(self) -> None:
+        if not self._asset_resolution_stats:
+            return
 
-    @staticmethod
-    def _int_or_none(value: Any) -> int | None:
-        if isinstance(value, bool):
-            return None
-        if isinstance(value, int):
-            return value
-        if isinstance(value, float):
-            return int(value)
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            try:
-                return int(float(stripped))
-            except ValueError:
-                return None
-        return None
+        total_resolved = 0
+        total_unresolved = 0
+        details: list[str] = []
+        for provider in sorted(self._asset_resolution_stats.keys()):
+            stats = self._asset_resolution_stats[provider]
+            resolved = int(stats.get("resolved", 0))
+            unresolved = int(stats.get("unresolved", 0))
+            total = int(stats.get("total", 0))
+            total_resolved += resolved
+            total_unresolved += unresolved
+            details.append(
+                f"{provider}: {resolved} resolved, {unresolved} unresolved ({total} total)"
+            )
 
-    @staticmethod
-    def _float_or_none(value: Any) -> float | None:
-        if isinstance(value, bool):
-            return None
-        if isinstance(value, (int, float)):
-            return float(value)
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            try:
-                return float(stripped)
-            except ValueError:
-                return None
-        return None
+        if details:
+            print(
+                f"-- Assets: {total_resolved} resolved, {total_unresolved} unresolved"
+                f" ({'; '.join(details)})"
+            )
 
     def _provider_export_root(self, provider: str) -> Path | None:
         if provider == "chatgpt":
@@ -250,7 +240,7 @@ class ChatHistoryService:
         else:
             preferred_extensions = set()
 
-        def score(path: Path) -> tuple[int, int, int, str]:
+        def score(path: Path) -> tuple[int, int, int, int, str]:
             stem = path.stem
             if stem == token:
                 prefix_score = 0
@@ -295,8 +285,11 @@ class ChatHistoryService:
         candidates = file_index.get(token, [])
         return self._select_best_asset_path(token, candidates, kind=kind)
 
-    def _build_asset_registry(self) -> None:
+    def _build_asset_registry(self) -> dict[str, dict[str, int]]:
         self._asset_registry = {}
+        stats_by_provider: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"resolved": 0, "unresolved": 0, "total": 0}
+        )
         chatgpt_export_root = self._provider_export_root("chatgpt")
         file_index: dict[str, list[Path]] = {}
         if chatgpt_export_root is not None and chatgpt_export_root.exists():
@@ -309,13 +302,23 @@ class ChatHistoryService:
                 for block_index, block in enumerate(message.content):
                     if block.type not in CHATGPT_ASSET_BLOCK_TYPES:
                         continue
-                    self._enrich_chatgpt_asset_block(
+                    is_resolved = self._enrich_chatgpt_asset_block(
                         conversation=conversation,
                         message=message,
                         block=block,
                         block_index=block_index,
                         file_index=file_index,
                     )
+                    if is_resolved is None:
+                        continue
+                    provider_stats = stats_by_provider[conversation.provider]
+                    provider_stats["total"] += 1
+                    if is_resolved:
+                        provider_stats["resolved"] += 1
+                    else:
+                        provider_stats["unresolved"] += 1
+
+        return {provider: dict(stats) for provider, stats in sorted(stats_by_provider.items())}
 
     def _enrich_chatgpt_asset_block(
         self,
@@ -325,17 +328,17 @@ class ChatHistoryService:
         block: ContentBlock,
         block_index: int,
         file_index: dict[str, list[Path]],
-    ) -> None:
+    ) -> bool | None:
         block_data = block.data if isinstance(block.data, dict) else {}
         raw_asset = block_data.get("asset")
         asset_data = raw_asset if isinstance(raw_asset, dict) else {}
-        asset_kind = self._string_or_none(asset_data.get("kind")) or (
+        asset_kind = _string_or_none(asset_data.get("kind")) or (
             "image" if block.type == "image_asset_pointer" else "audio"
         )
         if asset_kind not in SUPPORTED_ASSET_KINDS:
-            return
+            return None
 
-        source_pointer = self._string_or_none(asset_data.get("source_pointer")) or self._string_or_none(
+        source_pointer = _string_or_none(asset_data.get("source_pointer")) or _string_or_none(
             block_data.get("asset_pointer")
         )
         source_key = source_pointer or f"{conversation.id}:{message.id}:{block_index}"
@@ -354,14 +357,14 @@ class ChatHistoryService:
             kind=asset_kind,
         )
         is_resolved = bool(resolved_path and resolved_path.is_file())
-        format_hint = self._string_or_none(asset_data.get("format"))
+        format_hint = _string_or_none(asset_data.get("format"))
         if not format_hint and resolved_path is not None:
             format_hint = resolved_path.suffix.lstrip(".").lower() or None
 
         if is_resolved:
             assert resolved_path is not None
             mime_type = (
-                self._string_or_none(asset_data.get("mime_type"))
+                _string_or_none(asset_data.get("mime_type"))
                 or mimetypes.guess_type(str(resolved_path))[0]
                 or (f"audio/{format_hint}" if asset_kind == "audio" and format_hint else None)
             )
@@ -374,11 +377,11 @@ class ChatHistoryService:
             )
         else:
             media_type = (
-                self._string_or_none(asset_data.get("mime_type"))
+                _string_or_none(asset_data.get("mime_type"))
                 or (f"audio/{format_hint}" if asset_kind == "audio" and format_hint else None)
             )
 
-        size_bytes = self._int_or_none(asset_data.get("size_bytes")) or self._int_or_none(
+        size_bytes = _int_or_none(asset_data.get("size_bytes")) or _int_or_none(
             block_data.get("size_bytes")
         )
         if size_bytes is None and is_resolved and resolved_path is not None:
@@ -387,8 +390,8 @@ class ChatHistoryService:
             except OSError:
                 size_bytes = None
 
-        width = self._int_or_none(asset_data.get("width")) or self._int_or_none(block_data.get("width"))
-        height = self._int_or_none(asset_data.get("height")) or self._int_or_none(
+        width = _int_or_none(asset_data.get("width")) or _int_or_none(block_data.get("width"))
+        height = _int_or_none(asset_data.get("height")) or _int_or_none(
             block_data.get("height")
         )
 
@@ -401,7 +404,7 @@ class ChatHistoryService:
             "width": width,
             "height": height,
             "format": format_hint,
-            "duration": self._float_or_none(asset_data.get("duration")),
+            "duration": _float_or_none(asset_data.get("duration")),
             "is_resolved": is_resolved,
             "asset_url": (
                 f"/api/assets/{conversation.provider}/{asset_id}"
@@ -413,6 +416,7 @@ class ChatHistoryService:
         merged_data = dict(block_data)
         merged_data["asset"] = normalized_asset
         block.data = merged_data
+        return is_resolved
 
     def get_asset(self, provider: str, asset_id: str) -> ResolvedAsset | None:
         asset = self._asset_registry.get((provider, asset_id))

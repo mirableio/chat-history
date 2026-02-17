@@ -620,6 +620,9 @@ html.conversation-preload #main-content::before {
 .msg-asset-image {
     display: block;
     max-width: 100%;
+    max-height: 500px;
+    width: auto;
+    object-fit: contain;
     border-radius: 8px;
     border: 1px solid #6ee7b7;
     background: #ffffff;
