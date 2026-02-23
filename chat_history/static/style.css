@@ -100,6 +100,43 @@
     color: #1e40af;
 }
 
+.provider-filter-btn {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #6b7280;
+}
+
+.provider-filter-btn.active {
+    border-color: #6b7280;
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.provider-filter-chatgpt.active {
+    border-color: #166534;
+    background: #dcfce7;
+    color: #166534;
+}
+
+.provider-filter-claude.active {
+    border-color: #9a3412;
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.provider-filter-gemini.active {
+    border-color: #1e40af;
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 .conversation-header-actions {
     display: inline-flex;
     align-items: center;

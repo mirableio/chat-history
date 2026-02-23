@@ -69,6 +69,7 @@ async function loadConversations() {
         const conversations = await loadConversationsData();
         sidebarController.setConversationData(conversations);
         sidebarController.populateGroupDropdown();
+        sidebarController.populateProviderFilter();
         sidebarController.populateConversationsList();
     } catch (error) {
         console.error("Failed to load conversations:", error);

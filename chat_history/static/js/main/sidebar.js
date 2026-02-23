@@ -9,6 +9,7 @@ export function createSidebarController({
 }) {
     let conversationData = [];
     let selectedConvElem = null;
+    let activeProvider = ""; // "" = all
 
     function setConversationData(conversations) {
         conversationData = Array.isArray(conversations) ? conversations : [];
@@ -80,6 +81,40 @@ export function createSidebarController({
         });
     }
 
+    function populateProviderFilter() {
+        const container = document.getElementById("providerFilter");
+        const providers = [...new Set(conversationData.map((c) => c.provider).filter(Boolean))].sort();
+        if (providers.length < 2) {
+            container.classList.add("hidden");
+            activeProvider = "";
+            return;
+        }
+        container.classList.remove("hidden");
+        container.innerHTML = "";
+
+        const allBtn = document.createElement("button");
+        allBtn.textContent = "All";
+        allBtn.className = "provider-filter-btn" + (!activeProvider ? " active" : "");
+        allBtn.addEventListener("click", () => { activeProvider = ""; refreshProviderButtons(); populateConversationsList(); });
+        container.appendChild(allBtn);
+
+        providers.forEach((p) => {
+            const btn = document.createElement("button");
+            btn.textContent = p;
+            btn.className = `provider-filter-btn provider-filter-${p}` + (activeProvider === p ? " active" : "");
+            btn.addEventListener("click", () => { activeProvider = p; refreshProviderButtons(); populateConversationsList(); });
+            container.appendChild(btn);
+        });
+
+        function refreshProviderButtons() {
+            container.querySelectorAll(".provider-filter-btn").forEach((b) => {
+                const isAll = b.textContent === "All";
+                const isActive = isAll ? !activeProvider : activeProvider === b.textContent;
+                b.classList.toggle("active", isActive);
+            });
+        }
+    }
+
     function populateConversationsList() {
         const sidebar = document.getElementById("sidebar-conversations");
         sidebar.innerHTML = "";
@@ -100,7 +135,8 @@ export function createSidebarController({
             const matchesText = !searchText
                 || (conv.title && conv.title.toLowerCase().includes(searchText))
                 || (conv.provider && conv.provider.toLowerCase().includes(searchText));
-            return matchesActivityDay && matchesGroup && matchesText;
+            const matchesProvider = !activeProvider || conv.provider === activeProvider;
+            return matchesActivityDay && matchesGroup && matchesText && matchesProvider;
         });
 
         if (filteredData.length === 0 && hasDayFilter) {
@@ -164,6 +200,7 @@ export function createSidebarController({
         getConversationData,
         populateConversationsList,
         populateGroupDropdown,
+        populateProviderFilter,
         selectConversationRow,
         setConversationData,
         setConversationRowFavorite,
