@@ -94,6 +94,7 @@ class ChatHistoryService:
         self.conversations = load_provider_conversations(
             chatgpt_path=self.settings.chatgpt_path,
             claude_path=self.settings.claude_path,
+            gemini_path=self.settings.gemini_path,
         )
         self._conversation_map = {
             (conversation.provider, conversation.id): conversation
@@ -127,6 +128,7 @@ class ChatHistoryService:
         self.settings.export_dir.mkdir(parents=True, exist_ok=True)
         (self.settings.data_dir / "chatgpt").mkdir(parents=True, exist_ok=True)
         (self.settings.data_dir / "claude").mkdir(parents=True, exist_ok=True)
+        (self.settings.data_dir / "gemini").mkdir(parents=True, exist_ok=True)
         self.settings.settings_db_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _build_embedding_indices(self) -> list[ProviderEmbeddingIndex]:
@@ -134,7 +136,7 @@ class ChatHistoryService:
             return []
 
         indices: list[ProviderEmbeddingIndex] = []
-        for provider in ("chatgpt", "claude"):
+        for provider in ("chatgpt", "claude", "gemini"):
             provider_conversations = [
                 conversation
                 for conversation in self.conversations
@@ -183,6 +185,8 @@ class ChatHistoryService:
             source_path = self.settings.chatgpt_path
         elif provider == "claude":
             source_path = self.settings.claude_path
+        elif provider == "gemini":
+            source_path = self.settings.gemini_path
         else:
             return None
 

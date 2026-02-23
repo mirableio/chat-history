@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -13,6 +13,7 @@ from chat_history.coerce import (
     string_or_none as _string_or_none,
 )
 from chat_history.models import ContentBlock, ConversationRecord, MessageRecord, Provider, utc_now
+from chat_history.validation import ValidationReport
 
 CITATION_MARKER_RE = re.compile(r"cite.*?")
 MARKDOWN_LINK_URL_RE = re.compile(r"\((https?://[^)\s]+)\)")
@@ -687,10 +688,426 @@ def parse_claude_export(path: Path) -> list[ConversationRecord]:
     return conversations
 
 
+# ---------------------------------------------------------------------------
+# Gemini (Google AI Studio) parser
+# ---------------------------------------------------------------------------
+
+# Keys from the *merged* conversation envelope (id/title/times are added by the
+# merger; everything else comes from the original file).
+_GEMINI_CONVERSATION_KEYS = {
+    "id", "title", "create_time", "update_time",
+    "chunkedPrompt", "runSettings", "systemInstruction",
+    "imagenPrompt",
+}
+_GEMINI_CHUNKED_PROMPT_KEYS = {
+    "chunks", "pendingInputs",
+}
+_GEMINI_CHUNK_KEYS = {
+    "text", "parts", "role", "tokenCount", "finishReason",
+    "isEdited", "branchParent", "branchChildren",
+    "grounding", "thoughtSignatures", "thinkingBudget",
+    "inlineImage", "inlineAudio", "driveDocument", "driveVideo",
+    "driveAudio", "driveImage",
+    "inlineData", "isGeneratedUsingApiKey", "isThought",
+}
+_GEMINI_PART_KEYS = {
+    "text", "thought", "thoughtSignature", "inlineData",
+}
+_GEMINI_RUN_SETTINGS_KEYS = {
+    "model", "temperature", "topP", "topK", "maxOutputTokens",
+    "safetySettings", "responseMimeType",
+    "responseModalities", "thinkingConfig",
+    "enableCodeExecution", "enableSearchAsATool",
+    "enableBrowseAsATool", "enableAutoFunctionResponse",
+    "outputResolution", "googleSearch", "thinkingLevel",
+    "thinkingBudget", "assetCount", "aspectRatio",
+}
+
+
+def _parse_gemini_inline_data(inline_data: dict[str, Any], source: str) -> ContentBlock | None:
+    """Build an inline_image or inline_audio block from a base64-carrying dict."""
+    mime = _string_or_none(inline_data.get("mimeType")) or ""
+    data_b64 = _string_or_none(inline_data.get("data")) or ""
+    data_uri = f"data:{mime};base64,{data_b64}" if data_b64 else None
+
+    if mime.startswith("image/"):
+        return ContentBlock(
+            type="inline_image",
+            text="[Inline Image]",
+            data={"mime_type": mime, "data_uri": data_uri, "source": source},
+        )
+    if mime.startswith("audio/"):
+        return ContentBlock(
+            type="inline_audio",
+            text="[Inline Audio]",
+            data={"mime_type": mime, "data_uri": data_uri, "source": source},
+        )
+    return None
+
+
+def _parse_gemini_grounding(grounding: dict[str, Any]) -> ContentBlock | None:
+    """Build a grounding block with formatted citation links."""
+    text_parts: list[str] = []
+
+    segments = grounding.get("corroborationSegments")
+    if isinstance(segments, list):
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            uri = _string_or_none(segment.get("uri")) or ""
+            title = _string_or_none(segment.get("title")) or uri
+            footnote = segment.get("footnoteNumber")
+            if uri:
+                prefix = f"[{footnote}] " if footnote is not None else ""
+                text_parts.append(f"{prefix}[{title}]({uri})")
+
+    sources = grounding.get("groundingSources")
+    if isinstance(sources, list):
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            uri = _string_or_none(source.get("uri")) or ""
+            title = _string_or_none(source.get("title")) or uri
+            footnote = source.get("footnoteNumber")
+            if uri:
+                prefix = f"[{footnote}] " if footnote is not None else ""
+                text_parts.append(f"{prefix}[{title}]({uri})")
+
+    queries = grounding.get("webSearchQueries")
+    if isinstance(queries, list):
+        for query in queries:
+            if isinstance(query, str) and query.strip():
+                text_parts.append(f"Search: {query.strip()}")
+
+    if not text_parts:
+        return None
+    return ContentBlock(
+        type="grounding",
+        text="\n".join(text_parts),
+        data={},
+    )
+
+
+def _parse_gemini_chunk(
+    chunk: dict[str, Any],
+    *,
+    report: ValidationReport,
+) -> list[ContentBlock]:
+    """Parse a single Gemini chunk into ContentBlocks."""
+    blocks: list[ContentBlock] = []
+
+    # --- parts (structured text / inline data) ---
+    # Consecutive text parts are streaming fragments of one reply — join
+    # directly (no separator) so markdown renders correctly.
+    # Consecutive thinking parts are logically separate thoughts — join
+    # with a blank line so they read as distinct sections.
+    parts = chunk.get("parts")
+    if isinstance(parts, list):
+        text_accum: list[str] = []
+        thought_accum: list[str] = []
+
+        def _flush_text() -> None:
+            if text_accum:
+                merged = text_accum[0]
+                for fragment in text_accum[1:]:
+                    if merged and fragment and merged[-1].isalpha() and fragment[0].isalpha():
+                        merged += " "
+                    merged += fragment
+                blocks.append(ContentBlock(type="text", text=merged.strip()))
+                text_accum.clear()
+
+        def _flush_thought() -> None:
+            if thought_accum:
+                blocks.append(ContentBlock(
+                    type="thinking",
+                    text="\n\n".join(thought_accum),
+                    data={},
+                ))
+                thought_accum.clear()
+
+        def _flush_all() -> None:
+            _flush_thought()
+            _flush_text()
+
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+
+            report.check_keys(part, _GEMINI_PART_KEYS, "part")
+
+            part_text = _string_or_none(part.get("text")) or ""
+            is_thought = bool(part.get("thought"))
+
+            if is_thought and part_text.strip():
+                _flush_text()
+                thought_accum.append(part_text.strip())
+            elif part_text.strip():
+                _flush_thought()
+                text_accum.append(part_text)
+
+            inline_data = part.get("inlineData")
+            if isinstance(inline_data, dict):
+                _flush_all()
+                block = _parse_gemini_inline_data(inline_data, "part_inlineData")
+                if block:
+                    blocks.append(block)
+
+        _flush_all()
+
+    # --- fallback: top-level text (if no blocks from parts) ---
+    if not blocks:
+        top_text = _string_or_none(chunk.get("text"))
+        if top_text and top_text.strip():
+            blocks.append(ContentBlock(type="text", text=top_text.strip()))
+
+    # --- chunk-level inlineImage (model-generated images) ---
+    inline_image = chunk.get("inlineImage")
+    if isinstance(inline_image, dict):
+        mime = _string_or_none(inline_image.get("mimeType")) or "image/png"
+        data_b64 = _string_or_none(inline_image.get("data")) or ""
+        data_uri = f"data:{mime};base64,{data_b64}" if data_b64 else None
+        blocks.append(ContentBlock(
+            type="inline_image",
+            text="[Generated Image]",
+            data={"mime_type": mime, "data_uri": data_uri, "source": "inlineImage"},
+        ))
+
+    # --- chunk-level inlineAudio (user audio input) ---
+    inline_audio = chunk.get("inlineAudio")
+    if isinstance(inline_audio, dict):
+        mime = _string_or_none(inline_audio.get("mimeType")) or "audio/wav"
+        data_b64 = _string_or_none(inline_audio.get("data")) or ""
+        data_uri = f"data:{mime};base64,{data_b64}" if data_b64 else None
+        blocks.append(ContentBlock(
+            type="inline_audio",
+            text="[Audio Input]",
+            data={"mime_type": mime, "data_uri": data_uri, "source": "inlineAudio"},
+        ))
+
+    # --- chunk-level inlineData (generic inline media) ---
+    inline_data_top = chunk.get("inlineData")
+    if isinstance(inline_data_top, dict):
+        block = _parse_gemini_inline_data(inline_data_top, "chunk_inlineData")
+        if block:
+            blocks.append(block)
+
+    # --- chunk-level driveImage (user-uploaded image from Drive) ---
+    drive_image = chunk.get("driveImage")
+    if isinstance(drive_image, dict):
+        drive_id = _string_or_none(drive_image.get("id")) or ""
+        blocks.append(ContentBlock(
+            type="drive_document",
+            text="[Drive Image]",
+            data={"id": drive_id, "kind": "image"},
+        ))
+
+    # --- chunk-level driveAudio (user-uploaded audio from Drive) ---
+    drive_audio = chunk.get("driveAudio")
+    if isinstance(drive_audio, dict):
+        drive_id = _string_or_none(drive_audio.get("id")) or ""
+        blocks.append(ContentBlock(
+            type="drive_document",
+            text="[Drive Audio]",
+            data={"id": drive_id, "kind": "audio"},
+        ))
+
+    # --- driveDocument ---
+    drive_doc = chunk.get("driveDocument")
+    if isinstance(drive_doc, dict):
+        doc_name = _string_or_none(drive_doc.get("name")) or "[Drive Document]"
+        blocks.append(ContentBlock(
+            type="drive_document",
+            text=f"[Drive Document] {doc_name}",
+            data={k: v for k, v in drive_doc.items() if isinstance(v, (str, int, float, bool))},
+        ))
+
+    # --- driveVideo ---
+    drive_video = chunk.get("driveVideo")
+    if isinstance(drive_video, dict):
+        video_name = _string_or_none(drive_video.get("name")) or "[Drive Video]"
+        blocks.append(ContentBlock(
+            type="drive_video",
+            text=f"[Drive Video] {video_name}",
+            data={k: v for k, v in drive_video.items() if isinstance(v, (str, int, float, bool))},
+        ))
+
+    # --- grounding (web search citations) ---
+    grounding = chunk.get("grounding")
+    if isinstance(grounding, dict):
+        grounding_block = _parse_gemini_grounding(grounding)
+        if grounding_block:
+            blocks.append(grounding_block)
+
+    # --- validation ---
+    report.check_keys(chunk, _GEMINI_CHUNK_KEYS, "chunk")
+
+    return blocks
+
+
+def _extract_gemini_model(run_settings: dict[str, Any] | None) -> str | None:
+    if not isinstance(run_settings, dict):
+        return None
+    raw = _string_or_none(run_settings.get("model"))
+    if not raw:
+        return None
+    # Strip "models/" prefix for cleaner display
+    if raw.startswith("models/"):
+        return raw[len("models/"):]
+    return raw
+
+
+def _extract_gemini_system_text(
+    raw_conversation: dict[str, Any],
+) -> str | None:
+    """Return a system prompt string from systemInstruction (top-level key)."""
+    si = raw_conversation.get("systemInstruction")
+
+    if isinstance(si, str) and si.strip():
+        return si.strip()
+
+    if isinstance(si, dict):
+        # May contain {"parts": [{"text": "..."}]} or be empty
+        si_parts = si.get("parts")
+        if isinstance(si_parts, list):
+            texts: list[str] = []
+            for part in si_parts:
+                if isinstance(part, dict):
+                    text = _string_or_none(part.get("text"))
+                    if text:
+                        texts.append(text)
+            return "\n".join(texts) if texts else None
+        # Empty dict (seen in real data) — no system prompt
+        return None
+
+    return None
+
+
+def parse_gemini_export(path: Path) -> list[ConversationRecord]:
+    """Parse a merged Gemini conversations.json into ConversationRecords."""
+    report = ValidationReport(provider="gemini")
+
+    with path.open("r", encoding="utf-8") as file_handle:
+        raw_conversations = json.load(file_handle)
+
+    if not isinstance(raw_conversations, list):
+        report.record_warning("Expected a JSON array at top level")
+        report.log()
+        return []
+
+    conversations: list[ConversationRecord] = []
+
+    for raw_conversation in raw_conversations:
+        if not isinstance(raw_conversation, dict):
+            continue
+
+        conversation_id = str(raw_conversation.get("id") or "").strip()
+        if not conversation_id:
+            continue
+
+        title = str(raw_conversation.get("title") or "[Untitled]")
+        created = _parse_unix_datetime(raw_conversation.get("create_time"))
+        updated = _parse_unix_datetime(raw_conversation.get("update_time"), fallback=created)
+
+        run_settings = raw_conversation.get("runSettings")
+        model_name = _extract_gemini_model(run_settings)
+
+        # Validate conversation-level keys
+        report.check_keys(raw_conversation, _GEMINI_CONVERSATION_KEYS, "conversation")
+
+        # Validate runSettings keys
+        if isinstance(run_settings, dict):
+            report.check_keys(run_settings, _GEMINI_RUN_SETTINGS_KEYS, "run_settings")
+
+        # Extract chunks from chunkedPrompt (real structure) or top-level (test fixture)
+        chunked_prompt = raw_conversation.get("chunkedPrompt")
+        if isinstance(chunked_prompt, dict):
+            report.check_keys(chunked_prompt, _GEMINI_CHUNKED_PROMPT_KEYS, "chunked_prompt")
+            chunks = chunked_prompt.get("chunks") or []
+        else:
+            # Fallback: top-level "chunks" for legacy/test data
+            chunks = raw_conversation.get("chunks") or []
+        if not isinstance(chunks, list):
+            chunks = []
+
+        # Skip imagenPrompt-only conversations (image generation, no chunks)
+        if not chunks and "imagenPrompt" in raw_conversation:
+            continue
+
+        messages: list[MessageRecord] = []
+
+        # --- system message ---
+        system_text = _extract_gemini_system_text(raw_conversation)
+        if system_text:
+            messages.append(MessageRecord(
+                id=f"{conversation_id}-system",
+                provider="gemini",
+                role="system",
+                created=created,
+                updated=None,
+                model=model_name,
+                content=[ContentBlock(type="text", text=system_text)],
+            ))
+
+        # --- chunks → messages ---
+        for chunk_index, chunk in enumerate(chunks):
+            if not isinstance(chunk, dict):
+                continue
+
+            # Real data uses role: "user"/"model"; fallback to isUser for tests
+            raw_role = _string_or_none(chunk.get("role"))
+            if raw_role == "user":
+                is_user = True
+            elif raw_role == "model":
+                is_user = False
+            else:
+                is_user = bool(chunk.get("isUser", False))
+
+            role = "user" if is_user else "assistant"
+            message_id = f"{conversation_id}-{chunk_index}"
+            message_created = created + timedelta(seconds=chunk_index)
+
+            content_blocks = _parse_gemini_chunk(chunk, report=report)
+            if not content_blocks:
+                continue
+
+            messages.append(MessageRecord(
+                id=message_id,
+                provider="gemini",
+                role=role,
+                created=message_created,
+                updated=None,
+                model=model_name if not is_user else None,
+                content=content_blocks,
+            ))
+
+        if messages:
+            non_system = [m for m in messages if m.role != "system"]
+            if non_system:
+                created = min(created, non_system[0].created)
+                updated = max(updated, non_system[-1].created)
+
+        conversations.append(ConversationRecord(
+            id=conversation_id,
+            provider="gemini",
+            title=title,
+            created=created,
+            updated=updated,
+            messages=messages,
+        ))
+
+    report.log()
+    return conversations
+
+
+# ---------------------------------------------------------------------------
+# Provider merge
+# ---------------------------------------------------------------------------
+
 def load_provider_conversations(
     *,
     chatgpt_path: Path | None,
     claude_path: Path | None,
+    gemini_path: Path | None = None,
 ) -> list[ConversationRecord]:
     conversations: list[ConversationRecord] = []
 
@@ -699,6 +1116,9 @@ def load_provider_conversations(
 
     if claude_path and claude_path.exists():
         conversations.extend(parse_claude_export(claude_path))
+
+    if gemini_path and gemini_path.exists():
+        conversations.extend(parse_gemini_export(gemini_path))
 
     conversations.sort(key=lambda conversation: conversation.created, reverse=True)
     return conversations

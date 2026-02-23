@@ -34,6 +34,7 @@ class Settings:
     data_dir: Path
     chatgpt_path: Path | None
     claude_path: Path | None
+    gemini_path: Path | None
     settings_db_path: Path
     openai_api_key: str | None
     openai_organization: str | None
@@ -55,6 +56,7 @@ def load_settings() -> Settings:
     default_chatgpt_path = data_dir / "conversations.json"
     chatgpt_path = _normalize_provider_path(_optional_path(os.getenv("CHAT_HISTORY_CHATGPT_PATH")))
     claude_path = _normalize_provider_path(_optional_path(os.getenv("CHAT_HISTORY_CLAUDE_PATH")))
+    gemini_path = _normalize_provider_path(_optional_path(os.getenv("CHAT_HISTORY_GEMINI_PATH")))
 
     if chatgpt_path is None and default_chatgpt_path.exists():
         chatgpt_path = default_chatgpt_path
@@ -74,6 +76,7 @@ def load_settings() -> Settings:
         data_dir=data_dir,
         chatgpt_path=chatgpt_path,
         claude_path=claude_path,
+        gemini_path=gemini_path,
         settings_db_path=settings_db_path,
         openai_api_key=openai_api_key,
         openai_organization=openai_organization,

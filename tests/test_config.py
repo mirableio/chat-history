@@ -12,6 +12,7 @@ ENV_KEYS = [
     "CHAT_HISTORY_DATA_DIR",
     "CHAT_HISTORY_CHATGPT_PATH",
     "CHAT_HISTORY_CLAUDE_PATH",
+    "CHAT_HISTORY_GEMINI_PATH",
     "CHAT_HISTORY_SETTINGS_DB_PATH",
     "CHAT_HISTORY_OPENAI_ENABLED",
     "OPENAI_API_KEY",
@@ -57,6 +58,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.data_dir, Path("data"))
         self.assertIsNone(settings.chatgpt_path)
         self.assertIsNone(settings.claude_path)
+        self.assertIsNone(settings.gemini_path)
 
 
 if __name__ == "__main__":

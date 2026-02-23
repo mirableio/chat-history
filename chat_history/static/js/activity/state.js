@@ -11,6 +11,11 @@ const ACTIVITY_PROVIDER_THEME = {
     barBg: "rgba(234, 88, 12, 0.45)",
     barBorder: "rgba(194, 65, 12, 1)",
   },
+  gemini: {
+    heat: ["#eeeeee", "#bfdbfe", "#60a5fa", "#2563eb", "#1e3a8a"],
+    barBg: "rgba(37, 99, 235, 0.45)",
+    barBorder: "rgba(30, 64, 175, 1)",
+  },
 };
 
 const ACTIVITY_FALLBACK_COLORS = [

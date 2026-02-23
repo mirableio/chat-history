@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from chat_history.cli import (
+    _detect_provider,
     _is_claude_default_export_zip_name,
     _run_install_command,
     _scan_local_candidates,
@@ -69,6 +70,24 @@ class CliCandidateTests(unittest.TestCase):
             ["uvx", "--reinstall", "chat-history", "--version"],
             check=False,
         )
+
+
+class CliDetectProviderTests(unittest.TestCase):
+    def test_detect_chatgpt(self) -> None:
+        item = {"mapping": {}, "current_node": "abc"}
+        self.assertEqual(_detect_provider(item), "chatgpt")
+
+    def test_detect_claude(self) -> None:
+        item = {"uuid": "abc", "chat_messages": []}
+        self.assertEqual(_detect_provider(item), "claude")
+
+    def test_detect_gemini(self) -> None:
+        item = {"chunkedPrompt": {"chunks": [{"text": "Hello", "role": "user"}]}}
+        self.assertEqual(_detect_provider(item), "gemini")
+
+    def test_detect_unknown(self) -> None:
+        item = {"foo": "bar"}
+        self.assertIsNone(_detect_provider(item))
 
 
 if __name__ == "__main__":

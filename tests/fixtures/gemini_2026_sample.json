@@ -1,0 +1,109 @@
+[
+  {
+    "id": "gemini-conv-basic",
+    "title": "Basic Gemini Conversation",
+    "create_time": 1735000000.0,
+    "update_time": 1735000010.0,
+    "chunkedPrompt": {
+      "chunks": [
+        {
+          "text": "What is Python?",
+          "parts": [{"text": "What is Python?"}],
+          "role": "user",
+          "tokenCount": 5,
+          "finishReason": "STOP",
+          "isEdited": false,
+          "branchParent": null,
+          "branchChildren": []
+        },
+        {
+          "text": "Python is a high-level programming language.",
+          "parts": [
+            {"text": "Let me think about this carefully.", "thought": true, "thoughtSignature": ""},
+            {"text": "Python is a high-level, interpreted programming language known for its readability."}
+          ],
+          "role": "model",
+          "tokenCount": 42,
+          "finishReason": "STOP",
+          "thinkingBudget": 8192
+        }
+      ],
+      "pendingInputs": []
+    },
+    "systemInstruction": {
+      "parts": [{"text": "Be helpful and concise."}]
+    },
+    "runSettings": {
+      "model": "models/gemini-2.5-pro",
+      "temperature": 1,
+      "topP": 0.95,
+      "topK": 64,
+      "maxOutputTokens": 65536,
+      "safetySettings": [],
+      "responseMimeType": "text/plain",
+      "thinkingConfig": {"thinkingBudget": 8192},
+      "enableCodeExecution": false,
+      "enableSearchAsATool": false,
+      "enableBrowseAsATool": false,
+      "enableAutoFunctionResponse": false
+    }
+  },
+  {
+    "id": "gemini-conv-multimodal",
+    "title": "Multimodal Gemini Conversation",
+    "create_time": 1735001000.0,
+    "update_time": 1735001010.0,
+    "chunkedPrompt": {
+      "chunks": [
+        {
+          "text": "Describe this image",
+          "parts": [{"text": "Describe this image"}],
+          "role": "user",
+          "tokenCount": 3,
+          "inlineAudio": {
+            "mimeType": "audio/wav",
+            "data": "UklGRg=="
+          },
+          "driveDocument": {
+            "id": "1hufORyXJkDQejdVBAuMSjCdAQ5p_DE0n"
+          }
+        },
+        {
+          "text": "Here is a generated image based on your request.",
+          "parts": [
+            {"text": "Here is a generated image based on your request."}
+          ],
+          "role": "model",
+          "tokenCount": 10,
+          "finishReason": "STOP",
+          "inlineImage": {
+            "mimeType": "image/png",
+            "data": "iVBORw0KGgo="
+          },
+          "grounding": {
+            "groundingSources": [
+              {"uri": "https://example.com/source1", "title": "Example Source", "footnoteNumber": 1}
+            ],
+            "webSearchQueries": ["example search query"],
+            "corroborationSegments": []
+          },
+          "isGeneratedUsingApiKey": true,
+          "unknownFutureField": "should be reported"
+        }
+      ],
+      "pendingInputs": []
+    },
+    "systemInstruction": {},
+    "runSettings": {
+      "model": "models/gemini-2.0-flash",
+      "temperature": 1,
+      "topP": 0.95,
+      "maxOutputTokens": 8192,
+      "responseModalities": ["IMAGE", "TEXT"],
+      "enableCodeExecution": false,
+      "enableSearchAsATool": false,
+      "enableBrowseAsATool": false,
+      "enableAutoFunctionResponse": false
+    }
+  }
+]

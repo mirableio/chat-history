@@ -32,8 +32,8 @@ from chat_history.config import load_settings
 from chat_history.exporter import export_conversation
 from chat_history.services import ChatHistoryService
 
-PROVIDERS = ("chatgpt", "claude")
-PROVIDER_LABELS = {"chatgpt": "ChatGPT", "claude": "Claude"}
+PROVIDERS = ("chatgpt", "claude", "gemini")
+PROVIDER_LABELS = {"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini"}
 CONSOLE = Console()
 ENV_RELATIVE_PATH = Path("data") / ".env"
 
@@ -131,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export_parser.add_argument(
         "--provider",
-        choices=["chatgpt", "claude", "all"],
+        choices=["chatgpt", "claude", "gemini", "all"],
         default="all",
         help="Provider filter for exported conversations",
     )
@@ -155,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subcommands.add_parser("inspect", help="Print loaded provider counts")
     inspect_parser.add_argument(
         "--provider",
-        choices=["chatgpt", "claude", "all"],
+        choices=["chatgpt", "claude", "gemini", "all"],
         default="all",
         help="Provider filter",
     )
@@ -300,7 +300,7 @@ def _run_export_command(args: argparse.Namespace) -> int:
 
 def _cmd_inspect(service: ChatHistoryService, args: argparse.Namespace) -> int:
     provider_filter = args.provider
-    counts = {"chatgpt": 0, "claude": 0}
+    counts = {"chatgpt": 0, "claude": 0, "gemini": 0}
     message_count = 0
 
     for conversation in service.conversations:
@@ -428,6 +428,8 @@ def _provider_name_tokens(provider: str) -> tuple[str, ...]:
         return ("chatgpt", "openai", "gpt")
     if provider == "claude":
         return ("claude", "anthropic")
+    if provider == "gemini":
+        return ("gemini", "google", "aistudio", "ai-studio", "ai_studio")
     return (provider.lower(),)
 
 
@@ -543,6 +545,8 @@ def _detect_provider(first_item: dict[str, Any]) -> str | None:
         return "chatgpt"
     if "uuid" in first_item and "chat_messages" in first_item:
         return "claude"
+    if "chunkedPrompt" in first_item and isinstance(first_item.get("chunkedPrompt"), dict):
+        return "gemini"
     return None
 
 
@@ -553,7 +557,7 @@ def _build_validation_summary(raw_data: list[Any], provider: str) -> ValidationS
     for item in raw_data:
         if not isinstance(item, dict):
             continue
-        if provider == "chatgpt":
+        if provider in ("chatgpt", "gemini"):
             parsed = _parse_unix_date(item.get("create_time"))
         else:
             parsed = _parse_iso_date(item.get("created_at"))
@@ -617,6 +621,79 @@ def _extract_provider_zip(zip_path: Path, *, provider: str, data_dir: Path) -> P
     return conversations_json
 
 
+def _is_gemini_conversation(data: Any) -> bool:
+    """Check if parsed JSON is a valid Gemini conversation (has chunkedPrompt with chunks)."""
+    if not isinstance(data, dict):
+        return False
+    chunked = data.get("chunkedPrompt")
+    if isinstance(chunked, dict) and isinstance(chunked.get("chunks"), list):
+        return True
+    return False
+
+
+def _merge_gemini_export(zip_path: Path, *, data_dir: Path) -> Path:
+    """Extract a Gemini ZIP and merge individual conversation JSONs into one file."""
+    import hashlib
+
+    extract_dir = data_dir / "gemini"
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir)
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    merged: list[dict[str, Any]] = []
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        # Extract everything first (binary assets must live alongside conversations.json)
+        archive.extractall(extract_dir)
+
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            filename = info.filename
+            basename = Path(filename).name
+
+            # Skip known non-conversation files
+            if basename == "applet_access_history.json":
+                continue
+
+            # Try to parse as JSON
+            try:
+                with archive.open(info) as f:
+                    raw_text = f.read().decode("utf-8")
+                    data = json.loads(raw_text)
+            except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
+                continue  # Binary file or encoding issue — skip
+
+            if not _is_gemini_conversation(data):
+                continue
+
+            # Use ZIP entry date_time for timestamp
+            dt = info.date_time  # (year, month, day, hour, minute, second)
+            mtime = datetime(dt[0], dt[1], dt[2], dt[3], dt[4], dt[5], tzinfo=timezone.utc).timestamp()
+
+            # Title from filename stem (strip directory prefix)
+            title = Path(filename).stem or Path(filename).name or "[Untitled]"
+
+            # Stable ID from original filename in ZIP
+            conversation_id = hashlib.sha1(filename.encode("utf-8")).hexdigest()[:20]
+
+            merged.append({
+                "id": conversation_id,
+                "title": title,
+                "create_time": mtime,
+                "update_time": mtime,
+                **data,
+            })
+
+    merged.sort(key=lambda c: c.get("create_time", 0))
+
+    conversations_json = extract_dir / "conversations.json"
+    with conversations_json.open("w", encoding="utf-8") as f:
+        json.dump(merged, f, ensure_ascii=False)
+
+    return conversations_json
+
+
 def _prepare_provider_source(
     *,
     provider: str,
@@ -631,6 +708,22 @@ def _prepare_provider_source(
         raise FileNotFoundError(f"Path not found: {resolved}")
 
     if resolved.is_file() and resolved.suffix.lower() == ".zip":
+        if provider == "gemini":
+            with CONSOLE.status(
+                f"[bold cyan]Merging {resolved.name}...",
+                spinner="dots",
+            ):
+                conversations_json = _merge_gemini_export(resolved, data_dir=data_dir)
+            with CONSOLE.status(
+                f"[bold cyan]Validating {conversations_json.name}...",
+                spinner="dots",
+            ):
+                summary = _validate_provider_file(
+                    file_path=conversations_json,
+                    expected_provider=provider,
+                )
+            return conversations_json.resolve(), summary
+
         with CONSOLE.status(
             f"[bold cyan]Extracting {resolved.name}...",
             spinner="dots",

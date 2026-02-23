@@ -7,7 +7,7 @@ from typing import Any, Iterable, Literal
 import tiktoken
 
 
-Provider = Literal["chatgpt", "claude"]
+Provider = Literal["chatgpt", "claude", "gemini"]
 
 THINKING_BLOCK_TYPES = {"thinking", "thoughts", "reasoning_recap"}
 TOOL_BLOCK_TYPES = {"tool_use", "tool_result", "execution_output", "tether_browsing_display"}
@@ -17,7 +17,12 @@ ATTACHMENT_BLOCK_TYPES = {
     "real_time_user_audio_video_asset_pointer",
     "attachment",
     "file",
+    "inline_image",
+    "inline_audio",
+    "drive_document",
+    "drive_video",
 }
+GROUNDING_BLOCK_TYPES = {"grounding"}
 SYSTEM_BLOCK_TYPES = {"system_error"}
 
 
@@ -133,6 +138,8 @@ class ConversationRecord:
     def open_url(self) -> str:
         if self.provider == "claude":
             return f"https://claude.ai/chat/{self.id}"
+        if self.provider == "gemini":
+            return "https://aistudio.google.com/"
         return f"https://chat.openai.com/c/{self.id}"
 
 

@@ -9,6 +9,7 @@ from chat_history.parsers import (
     load_provider_conversations,
     parse_chatgpt_export,
     parse_claude_export,
+    parse_gemini_export,
 )
 
 
@@ -345,6 +346,103 @@ class ParserTests(unittest.TestCase):
             self.assertIsNotNone(conversation.created.tzinfo)
             for message in conversation.messages:
                 self.assertIsNotNone(message.created.tzinfo)
+
+
+class GeminiParserTests(unittest.TestCase):
+    def test_gemini_basic_conversation_count(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        self.assertEqual(len(conversations), 2)
+
+    def test_gemini_user_and_assistant_roles(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-basic")
+        roles = [m.role for m in conv.messages]
+        self.assertIn("user", roles)
+        self.assertIn("assistant", roles)
+
+    def test_gemini_thinking_blocks(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-basic")
+        assistant_msgs = [m for m in conv.messages if m.role == "assistant"]
+        self.assertGreater(len(assistant_msgs), 0)
+        block_types = [b.type for b in assistant_msgs[0].content]
+        self.assertIn("thinking", block_types)
+        self.assertIn("text", block_types)
+
+    def test_gemini_system_prompt(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-basic")
+        system_msgs = [m for m in conv.messages if m.role == "system"]
+        self.assertEqual(len(system_msgs), 1)
+        self.assertIn("helpful and concise", system_msgs[0].text())
+
+    def test_gemini_inline_image(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-multimodal")
+        all_blocks = [b for m in conv.messages for b in m.content]
+        image_blocks = [b for b in all_blocks if b.type == "inline_image"]
+        self.assertGreater(len(image_blocks), 0)
+        self.assertTrue(image_blocks[0].data.get("data_uri", "").startswith("data:"))
+
+    def test_gemini_inline_audio(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-multimodal")
+        all_blocks = [b for m in conv.messages for b in m.content]
+        audio_blocks = [b for b in all_blocks if b.type == "inline_audio"]
+        self.assertGreater(len(audio_blocks), 0)
+        self.assertTrue(audio_blocks[0].data.get("data_uri", "").startswith("data:"))
+
+    def test_gemini_grounding(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-multimodal")
+        all_blocks = [b for m in conv.messages for b in m.content]
+        grounding_blocks = [b for b in all_blocks if b.type == "grounding"]
+        self.assertGreater(len(grounding_blocks), 0)
+        self.assertIn("example.com", grounding_blocks[0].text)
+
+    def test_gemini_drive_reference(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-multimodal")
+        all_blocks = [b for m in conv.messages for b in m.content]
+        drive_blocks = [b for b in all_blocks if b.type == "drive_document"]
+        self.assertGreater(len(drive_blocks), 0)
+        self.assertIn("id", drive_blocks[0].data)
+
+    def test_gemini_model_extracted(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-basic")
+        models = {m.model for m in conv.messages if m.model}
+        self.assertIn("gemini-2.5-pro", models)
+
+    def test_gemini_message_timestamps_increment(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        conv = next(c for c in conversations if c.id == "gemini-conv-basic")
+        non_system = [m for m in conv.messages if m.role != "system"]
+        for i in range(1, len(non_system)):
+            self.assertGreater(non_system[i].created, non_system[i - 1].created)
+
+    def test_gemini_provider_merge(self) -> None:
+        conversations = load_provider_conversations(
+            chatgpt_path=FIXTURES_DIR / "chatgpt_2026_sample.json",
+            claude_path=FIXTURES_DIR / "claude_2026_sample.json",
+            gemini_path=FIXTURES_DIR / "gemini_2026_sample.json",
+        )
+        providers = {c.provider for c in conversations}
+        self.assertEqual(providers, {"chatgpt", "claude", "gemini"})
+
+    def test_gemini_provider_is_gemini(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        for conv in conversations:
+            self.assertEqual(conv.provider, "gemini")
+            for msg in conv.messages:
+                self.assertEqual(msg.provider, "gemini")
+
+    def test_gemini_utc_datetimes(self) -> None:
+        conversations = parse_gemini_export(FIXTURES_DIR / "gemini_2026_sample.json")
+        for conv in conversations:
+            self.assertIsNotNone(conv.created.tzinfo)
+            for msg in conv.messages:
+                self.assertIsNotNone(msg.created.tzinfo)
 
 
 if __name__ == "__main__":

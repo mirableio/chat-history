@@ -14,10 +14,18 @@ const ATTACHMENT_BLOCK_TYPES = new Set([
     "image_asset_pointer",
     "audio_asset_pointer",
     "real_time_user_audio_video_asset_pointer",
+    "inline_image",
+    "inline_audio",
+    "drive_document",
+    "drive_video",
 ]);
 const IMAGE_BLOCK_TYPES = new Set(["image_asset_pointer"]);
 const AUDIO_BLOCK_TYPES = new Set(["audio_asset_pointer", "real_time_user_audio_video_asset_pointer"]);
 const TRANSCRIPT_BLOCK_TYPES = new Set(["audio_transcription"]);
+const INLINE_IMAGE_BLOCK_TYPES = new Set(["inline_image"]);
+const INLINE_AUDIO_BLOCK_TYPES = new Set(["inline_audio"]);
+const GROUNDING_BLOCK_TYPES = new Set(["grounding"]);
+const DRIVE_REFERENCE_BLOCK_TYPES = new Set(["drive_document", "drive_video"]);
 const SYSTEM_BLOCK_TYPES = new Set(["system_error"]);
 
 function firstLinePreview(value, maxLength = 140) {
@@ -292,6 +300,91 @@ function renderClaudeFileBlock(block) {
     `;
 }
 
+function renderInlineImageBlock(block) {
+    const data = block?.data && typeof block.data === "object" ? block.data : {};
+    const dataUri = String(data.data_uri || "").trim();
+    const source = String(data.source || "").trim();
+    const label = source === "inlineImage" ? "generated image" : "inline image";
+
+    if (dataUri) {
+        return `
+            <div class="msg-block msg-block-asset msg-block-asset-image">
+                <div class="msg-block-label">${label}</div>
+                <a class="msg-asset-image-link" href="${escapeHtml(dataUri)}" target="_blank" rel="noopener noreferrer">
+                    <img class="msg-asset-image" src="${escapeHtml(dataUri)}" alt="${escapeHtml(label)}" loading="lazy" />
+                </a>
+            </div>
+        `;
+    }
+    return `
+        <div class="msg-block msg-block-asset">
+            <div class="msg-block-label">${label}</div>
+            <div class="msg-block-body"><div class="msg-asset-fallback">Inline image (data not available)</div></div>
+        </div>
+    `;
+}
+
+function renderInlineAudioBlock(block) {
+    const data = block?.data && typeof block.data === "object" ? block.data : {};
+    const dataUri = String(data.data_uri || "").trim();
+    const source = String(data.source || "").trim();
+    const label = source === "inlineAudio" ? "audio input" : "inline audio";
+
+    if (dataUri) {
+        return `
+            <div class="msg-block msg-block-asset msg-block-asset-audio">
+                <div class="msg-block-label">${label}</div>
+                <audio class="msg-asset-audio-player" controls preload="none" src="${escapeHtml(dataUri)}"></audio>
+            </div>
+        `;
+    }
+    return `
+        <div class="msg-block msg-block-asset">
+            <div class="msg-block-label">${label}</div>
+            <div class="msg-block-body"><div class="msg-asset-fallback">Inline audio (data not available)</div></div>
+        </div>
+    `;
+}
+
+function renderGroundingBlock(block, renderBlockBody) {
+    const text = String(block?.text || "");
+    const preview = firstLinePreview(text);
+    const previewHtml = preview
+        ? `<span class="msg-block-summary-preview">${escapeHtml(preview)}</span>`
+        : "";
+
+    return `
+        <details class="msg-block msg-block-grounding">
+            <summary class="msg-block-summary">
+                <span class="msg-block-summary-label">Web search results</span>
+                ${previewHtml}
+            </summary>
+            <div class="msg-block-body">${renderBlockBody(text, { markdown: true })}</div>
+        </details>
+    `;
+}
+
+function renderDriveReferenceBlock(block) {
+    const text = String(block?.text || "");
+    const label = formatBlockType(block?.type || "drive_document");
+    const chipText = text.replace(/^\[Drive (?:Document|Video|Image|Audio)\]\s*/i, "") || text;
+    const driveId = block?.data?.id;
+    const driveUrl = driveId ? `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/view` : "";
+
+    const chipContent = driveUrl
+        ? `<a href="${escapeHtml(driveUrl)}" target="_blank" rel="noopener noreferrer" class="msg-file-chip">${escapeHtml(chipText)}</a>`
+        : `<span class="msg-file-chip">${escapeHtml(chipText)}</span>`;
+
+    return `
+        <div class="msg-block msg-block-asset msg-block-file-chip">
+            <div class="msg-block-label">${label}</div>
+            <div class="msg-block-body">
+                ${chipContent}
+            </div>
+        </div>
+    `;
+}
+
 function renderMessageBlock(block, renderBlockBody) {
     const type = block?.type || "unknown";
     const label = formatBlockType(type);
@@ -349,6 +442,22 @@ function renderMessageBlock(block, renderBlockBody) {
 
     if (type === "file") {
         return renderClaudeFileBlock(block);
+    }
+
+    if (INLINE_IMAGE_BLOCK_TYPES.has(type)) {
+        return renderInlineImageBlock(block);
+    }
+
+    if (INLINE_AUDIO_BLOCK_TYPES.has(type)) {
+        return renderInlineAudioBlock(block);
+    }
+
+    if (GROUNDING_BLOCK_TYPES.has(type)) {
+        return renderGroundingBlock(block, renderBlockBody);
+    }
+
+    if (DRIVE_REFERENCE_BLOCK_TYPES.has(type)) {
+        return renderDriveReferenceBlock(block);
     }
 
     if (ATTACHMENT_BLOCK_TYPES.has(type)) {

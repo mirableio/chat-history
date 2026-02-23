@@ -151,7 +151,7 @@ export function createMessageRenderer({ findConversation, onToggleFavorite }) {
                 <div class="flex items-center gap-3 min-w-0">
                     <span class="provider-badge provider-${data.provider}">${data.provider}</span>
                     <a href="${data.open_url}" target="_blank" rel="noopener noreferrer" class="hover:underline">
-                        Open in ${data.provider === "claude" ? "Claude" : "ChatGPT"}
+                        Open in ${{ chatgpt: "ChatGPT", claude: "Claude", gemini: "Gemini" }[data.provider] || data.provider}
                         <span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 48; vertical-align: sub; font-size: 18px !important">open_in_new</span>
                     </a>
                 </div>

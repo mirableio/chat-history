@@ -118,8 +118,13 @@ export function buildActivityGraph(parentElement, options) {
     }
 
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const minMonthGap = 30;
     for (let i = 0; i < monthPosition.length; i += 1) {
       const item = monthPosition[i];
+      const nextX = i + 1 < monthPosition.length ? monthPosition[i + 1].x : Infinity;
+      if (nextX - item.x < minMonthGap) {
+        continue;
+      }
       const monthName = monthNames[item.monthIndex];
       loopHtml += `<text x="${item.x}" y="-5" class="month">${monthName}</text>`;
     }

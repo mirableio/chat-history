@@ -95,6 +95,11 @@
     color: #9a3412;
 }
 
+.provider-gemini {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 .conversation-header-actions {
     display: inline-flex;
     align-items: center;
@@ -643,6 +648,15 @@ html.conversation-preload #main-content::before {
     width: 100%;
     max-width: 100%;
     min-height: 36px;
+}
+
+.msg-block-grounding {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.msg-block-grounding .msg-block-summary-label {
+    color: #1e40af;
 }
 
 .msg-block-transcript {

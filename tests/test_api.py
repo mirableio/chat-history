@@ -21,6 +21,7 @@ class ApiSmokeTests(unittest.TestCase):
         os.environ["CHAT_HISTORY_DATA_DIR"] = self._tmp_dir.name
         os.environ["CHAT_HISTORY_CHATGPT_PATH"] = str(FIXTURES_DIR / "chatgpt_2026_sample.json")
         os.environ["CHAT_HISTORY_CLAUDE_PATH"] = str(FIXTURES_DIR / "claude_2026_sample.json")
+        os.environ["CHAT_HISTORY_GEMINI_PATH"] = str(FIXTURES_DIR / "gemini_2026_sample.json")
         os.environ["CHAT_HISTORY_OPENAI_ENABLED"] = "false"
         os.environ.pop("OPENAI_API_KEY", None)
 
@@ -43,6 +44,7 @@ class ApiSmokeTests(unittest.TestCase):
             "CHAT_HISTORY_DATA_DIR",
             "CHAT_HISTORY_CHATGPT_PATH",
             "CHAT_HISTORY_CLAUDE_PATH",
+            "CHAT_HISTORY_GEMINI_PATH",
             "CHAT_HISTORY_OPENAI_ENABLED",
             "OPENAI_API_KEY",
         ]
@@ -53,7 +55,7 @@ class ApiSmokeTests(unittest.TestCase):
         conversations = conversations_response.json()
         self.assertGreater(len(conversations), 0)
         providers = {conversation["provider"] for conversation in conversations}
-        self.assertEqual(providers, {"chatgpt", "claude"})
+        self.assertEqual(providers, {"chatgpt", "claude", "gemini"})
 
         first = conversations[0]
         messages_response = self.client.get(
@@ -76,7 +78,7 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertNotIn("Shortest conversation", stats["summary"])
         self.assertNotIn("Longest conversation", stats["summary"])
         self.assertNotIn("Average chat length", stats["summary"])
-        self.assertEqual(set(stats["by_provider"].keys()), {"chatgpt", "claude"})
+        self.assertEqual(set(stats["by_provider"].keys()), {"chatgpt", "claude", "gemini"})
 
         token_response = self.client.get("/api/ai-cost")
         self.assertEqual(token_response.status_code, 200)
